@@ -39,3 +39,11 @@ The short rule is deliberately symmetric: bearish EMA alignment plus negative tr
 ## Decision rule
 
 Do not adopt shorting merely because total return rises. It should improve at least one robust risk-adjusted measure without creating unacceptable short-side drawdowns, turnover, or concentration in a few trades. Compare fixed-size long/flat with fixed-size long/short first; continuous volatility scaling remains an ablation.
+
+## v0.5 selective short overlays
+
+- `settings_short_a_strict.yaml`: strict EMA/down-breakout/trend-strength confirmation, -50% shorts.
+- `settings_short_b_regime.yaml`: Variant A plus a declining 1200-bar EMA regime filter.
+- `settings_short_c_regime_stop.yaml`: Variant B plus a 2.5 ATR short trailing stop.
+
+The long rule is unchanged in all variants. These are rejection tests: abandon the short overlay if none improves Sharpe or Calmar while reducing drawdown versus the frozen long/flat baseline.

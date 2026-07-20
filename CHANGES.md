@@ -1,3 +1,11 @@
+## 0.5.0
+
+- Added three predeclared selective-short overlay configurations.
+- Added asymmetric +100% long / -50% short position sizing.
+- Added a declining 1200-bar EMA bear-regime filter.
+- Added a stateful 2.5 ATR short trailing stop with re-entry blocking.
+- Added selective-short tests; strict suite now contains 27 tests.
+
 # Changes
 
 ## 0.2.1

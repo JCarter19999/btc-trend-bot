@@ -80,8 +80,7 @@ def run_research(
     result = run_backtest(strategy_frame, cfg["backtest"])
 
     fixed_frame = strategy_frame.copy()
-    fixed_max = float(cfg["strategy"].get("max_position", 1.0))
-    fixed_frame["target_position"] = fixed_frame["direction"] * fixed_max
+    fixed_frame["target_position"] = fixed_frame["fixed_target_position"]
     fixed_result = run_backtest(fixed_frame, cfg["backtest"])
     result.bars["fixed_trend_equity"] = fixed_result.bars["equity"]
     result.bars["fixed_trend_return"] = fixed_result.bars["strategy_return"]

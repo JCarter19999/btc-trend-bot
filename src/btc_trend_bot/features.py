@@ -30,11 +30,13 @@ def add_features(frame: pd.DataFrame, strategy_cfg: dict, bars_per_year: int) ->
     atr_bars = int(strategy_cfg["atr_bars"])
     rv_bars = int(strategy_cfg["realized_vol_bars"])
     long_vol_bars = int(strategy_cfg["long_vol_bars"])
+    regime_bars = int(strategy_cfg.get("short_regime_ema_bars", 1200))
 
     out["simple_return"] = out["close"].pct_change()
     out["log_return"] = np.log(out["close"] / out["close"].shift(1))
     out["ema_fast"] = out["close"].ewm(span=fast, adjust=False, min_periods=fast).mean()
     out["ema_slow"] = out["close"].ewm(span=slow, adjust=False, min_periods=slow).mean()
+    out["ema_regime"] = out["close"].ewm(span=regime_bars, adjust=False, min_periods=regime_bars).mean()
     out["true_range"] = true_range(out)
     out["atr"] = out["true_range"].ewm(span=atr_bars, adjust=False, min_periods=atr_bars).mean()
     out["atr_pct"] = out["atr"] / out["close"]
