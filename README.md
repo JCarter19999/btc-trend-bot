@@ -108,3 +108,7 @@ python -m btc_trend_bot.cli backtest --data data/btc_usd_4h_coinbase.csv
 ```
 
 See `DATA_REPAIR.md` for the complete workflow and data-quality gates.
+
+## Research diagnostics (v0.4)
+
+Each backtest now also writes `trades.csv` and `yearly_performance.csv`. The metrics JSON and console report include separate bootstrap tests, trade concentration, and market-capture diagnostics. See `ADDITIONAL_TESTS.md` for the frozen long/flat control and mirrored long/short experiment.

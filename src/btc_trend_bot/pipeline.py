@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from btc_trend_bot.analytics import extract_trades, market_capture, summarize_trades, yearly_performance
 from btc_trend_bot.backtest import BacktestResult, run_backtest
 from btc_trend_bot.config import load_config
 from btc_trend_bot.data import load_ohlcv_csv, normalize_ohlcv, timeframe_to_timedelta
@@ -84,17 +85,61 @@ def run_research(
     fixed_result = run_backtest(fixed_frame, cfg["backtest"])
     result.bars["fixed_trend_equity"] = fixed_result.bars["equity"]
     result.bars["fixed_trend_return"] = fixed_result.bars["strategy_return"]
+    result.bars["fixed_trend_position"] = fixed_result.bars["held_position"]
+    result.bars["fixed_trend_turnover"] = fixed_result.bars["turnover"]
 
     bars_per_year = int(cfg["backtest"]["bars_per_year"])
     metrics = summarize_backtest(result.bars, bars_per_year=bars_per_year)
     fixed_metrics = summarize_backtest(fixed_result.bars, bars_per_year=bars_per_year)["strategy"]
     metrics["fixed_size_trend"] = fixed_metrics
+
+    bootstrap_kwargs = {
+        "n_samples": int(cfg["backtest"]["bootstrap_samples"]),
+        "block_bars": int(cfg["backtest"]["bootstrap_block_bars"]),
+        "seed": int(cfg["backtest"]["random_seed"]),
+    }
     metrics["block_bootstrap"] = moving_block_bootstrap_mean_ci(
-        result.bars["strategy_return"],
-        n_samples=int(cfg["backtest"]["bootstrap_samples"]),
-        block_bars=int(cfg["backtest"]["bootstrap_block_bars"]),
-        seed=int(cfg["backtest"]["random_seed"]),
+        result.bars["strategy_return"], **bootstrap_kwargs
     )
+    metrics["bootstraps"] = {
+        "vol_scaled": moving_block_bootstrap_mean_ci(
+            result.bars["strategy_return"], **bootstrap_kwargs
+        ),
+        "fixed_size": moving_block_bootstrap_mean_ci(
+            result.bars["fixed_trend_return"], **bootstrap_kwargs
+        ),
+        "fixed_minus_buy_and_hold": moving_block_bootstrap_mean_ci(
+            result.bars["fixed_trend_return"] - result.bars["benchmark_return"],
+            **bootstrap_kwargs,
+        ),
+        "fixed_minus_vol_scaled": moving_block_bootstrap_mean_ci(
+            result.bars["fixed_trend_return"] - result.bars["strategy_return"],
+            **bootstrap_kwargs,
+        ),
+    }
+
+    vol_trades = extract_trades(
+        result.bars, "held_position", "strategy_return", "equity", "vol_scaled"
+    )
+    fixed_trades = extract_trades(
+        result.bars,
+        "fixed_trend_position",
+        "fixed_trend_return",
+        "fixed_trend_equity",
+        "fixed_size",
+    )
+    metrics["trade_summary"] = {
+        "vol_scaled": summarize_trades(vol_trades),
+        "fixed_size": summarize_trades(fixed_trades),
+    }
+    metrics["market_capture"] = {
+        "vol_scaled": market_capture(
+            result.bars["strategy_return"], result.bars["benchmark_return"], bars_per_year
+        ),
+        "fixed_size": market_capture(
+            result.bars["fixed_trend_return"], result.bars["benchmark_return"], bars_per_year
+        ),
+    }
     metrics["data"] = {
         "rows": report.rows,
         "missing_intervals": report.missing_intervals,
@@ -114,6 +159,29 @@ def save_outputs(result: BacktestResult, metrics: dict, output_dir: str = "outpu
     result.bars.to_csv(directory / "backtest_bars.csv", index=False)
     with (directory / "metrics.json").open("w", encoding="utf-8") as handle:
         json.dump(metrics, handle, indent=2, allow_nan=True)
+
+    vol_trades = extract_trades(
+        result.bars, "held_position", "strategy_return", "equity", "vol_scaled"
+    )
+    fixed_trades = extract_trades(
+        result.bars,
+        "fixed_trend_position",
+        "fixed_trend_return",
+        "fixed_trend_equity",
+        "fixed_size",
+    )
+    pd.concat([vol_trades, fixed_trades], ignore_index=True).to_csv(
+        directory / "trades.csv", index=False
+    )
+    yearly_performance(
+        result.bars,
+        {
+            "vol_scaled": "strategy_return",
+            "fixed_size": "fixed_trend_return",
+            "buy_and_hold": "benchmark_return",
+        },
+        bars_per_year=2190,
+    ).to_csv(directory / "yearly_performance.csv", index=False)
 
     fig, ax = plt.subplots(figsize=(11, 6))
     ax.plot(result.bars["timestamp"], result.bars["equity"], label="Vol-scaled trend")
@@ -146,6 +214,21 @@ def print_metrics(metrics: dict) -> None:
             "total_turnover",
         ):
             print(f"  {key}: {section[key]:.6f}")
-    print("\nBlock bootstrap")
-    for key, value in metrics["block_bootstrap"].items():
-        print(f"  {key}: {value}")
+
+    print("\nBootstrap tests")
+    for name, section in metrics.get("bootstraps", {"vol_scaled": metrics["block_bootstrap"]}).items():
+        print(f"  {name}:")
+        for key, value in section.items():
+            print(f"    {key}: {value}")
+
+    print("\nTrade summary")
+    for name, section in metrics.get("trade_summary", {}).items():
+        print(f"  {name}:")
+        for key, value in section.items():
+            print(f"    {key}: {value}")
+
+    print("\nMarket capture")
+    for name, section in metrics.get("market_capture", {}).items():
+        print(f"  {name}:")
+        for key, value in section.items():
+            print(f"    {key}: {value}")

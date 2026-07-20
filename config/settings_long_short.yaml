@@ -12,7 +12,7 @@ data_quality:
   max_single_gap_bars: 6
 
 strategy:
-  mode: long_flat
+  mode: long_short
   fast_ema_bars: 42
   slow_ema_bars: 252
   breakout_bars: 120

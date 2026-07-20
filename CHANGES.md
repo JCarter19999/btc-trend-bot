@@ -34,3 +34,21 @@
 - Add a research data-quality gate for configured start coverage, total missing rate, and largest contiguous gap.
 - Add `--allow-data-gaps` for explicitly diagnostic backtests only.
 - Add four Coinbase/gap tests; strict suite now contains 20 tests.
+
+## 0.4.0
+
+- Added trade-level attribution and `outputs/trades.csv`.
+- Added year-by-year strategy comparison in `outputs/yearly_performance.csv`.
+- Added separate block bootstrap tests for fixed-size returns and excess returns.
+- Added upside/downside capture, beta, correlation, and arithmetic alpha diagnostics.
+- Added frozen no-breaker long/flat and mirrored long/short research configurations.
+- Added fixed-size position and turnover columns to the bar-level output.
+
+## 0.4.0
+
+- Added trade-level attribution and `outputs/trades.csv`.
+- Added year-by-year strategy comparison in `outputs/yearly_performance.csv`.
+- Added separate block bootstrap tests for fixed-size returns and excess returns.
+- Added upside/downside capture, beta, correlation, and arithmetic alpha diagnostics.
+- Added frozen no-breaker long/flat and mirrored long/short research configurations.
+- Added fixed-size position and turnover columns to the bar-level output.
