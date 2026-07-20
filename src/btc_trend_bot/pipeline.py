@@ -8,8 +8,9 @@ import pandas as pd
 
 from btc_trend_bot.backtest import BacktestResult, run_backtest
 from btc_trend_bot.config import load_config
-from btc_trend_bot.data import load_ohlcv_csv, normalize_ohlcv
+from btc_trend_bot.data import load_ohlcv_csv, normalize_ohlcv, timeframe_to_timedelta
 from btc_trend_bot.features import add_features
+from btc_trend_bot.gaps import build_gap_report
 from btc_trend_bot.metrics import moving_block_bootstrap_mean_ci, summarize_backtest
 from btc_trend_bot.strategy import build_target_positions
 
@@ -24,6 +25,7 @@ def run_research(
     config_path: str = "config/settings.yaml",
     data_path: str | None = None,
     frame: pd.DataFrame | None = None,
+    allow_data_gaps: bool = False,
 ) -> tuple[BacktestResult, dict]:
     cfg = load_config(config_path)
     timeframe = str(cfg["market"]["timeframe"])
@@ -34,8 +36,44 @@ def run_research(
     else:
         normalized, report = normalize_ohlcv(frame, timeframe=timeframe)
 
-    if report.missing_intervals:
-        print(f"Warning: detected approximately {report.missing_intervals} missing {timeframe} intervals.")
+    gap_report = build_gap_report(normalized["timestamp"], timeframe=timeframe)
+    quality = cfg.get("data_quality", {})
+    requested_start = pd.Timestamp(str(cfg["market"]["start"]))
+    if requested_start.tzinfo is None:
+        requested_start = requested_start.tz_localize("UTC")
+    else:
+        requested_start = requested_start.tz_convert("UTC")
+    step = timeframe_to_timedelta(timeframe)
+
+    quality_failures: list[str] = []
+    if (
+        frame is None
+        and bool(quality.get("require_configured_start", True))
+        and report.first_timestamp > requested_start + step
+    ):
+        quality_failures.append(
+            f"first candle is {report.first_timestamp.isoformat()}, after configured start "
+            f"{requested_start.isoformat()}"
+        )
+    max_missing_rate = float(quality.get("max_missing_rate", 0.005))
+    if gap_report.missing_rate > max_missing_rate:
+        quality_failures.append(
+            f"missing rate {gap_report.missing_rate:.2%} exceeds {max_missing_rate:.2%}"
+        )
+    max_gap = int(quality.get("max_single_gap_bars", 6))
+    if gap_report.largest_gap_bars > max_gap:
+        quality_failures.append(
+            f"largest gap {gap_report.largest_gap_bars} bars exceeds {max_gap}"
+        )
+
+    if quality_failures and not allow_data_gaps:
+        details = "; ".join(quality_failures)
+        raise ValueError(
+            "Data quality gate failed: " + details + ". "
+            "Use a complete history source or pass --allow-data-gaps for diagnostics only."
+        )
+    if quality_failures:
+        print("Warning: data quality override enabled: " + "; ".join(quality_failures))
 
     strategy_frame = prepare_strategy_frame(normalized, cfg)
     result = run_backtest(strategy_frame, cfg["backtest"])
@@ -60,6 +98,9 @@ def run_research(
     metrics["data"] = {
         "rows": report.rows,
         "missing_intervals": report.missing_intervals,
+        "expected_intervals": gap_report.expected_bars,
+        "missing_rate": gap_report.missing_rate,
+        "largest_gap_bars": gap_report.largest_gap_bars,
         "first_timestamp": report.first_timestamp.isoformat(),
         "last_timestamp": report.last_timestamp.isoformat(),
         "breaker_timestamp": result.breaker_timestamp.isoformat() if result.breaker_timestamp else None,

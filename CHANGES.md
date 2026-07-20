@@ -1,5 +1,11 @@
 # Changes
 
+## 0.2.1
+
+- Fixed a NumPy/Pandas deprecation warning in `timeframe_to_minutes`.
+- Replaced division by `pd.Timedelta(minutes=1)` with explicit seconds-to-minutes conversion.
+- Verified all 16 tests with deprecation warnings treated as errors.
+
 ## 0.2.0
 
 - Added direct import of Kraken's complete OHLCVT ZIP without extracting it.
@@ -19,3 +25,12 @@
 ## 0.1.0
 
 - Initial research and paper-trading scaffold.
+
+## v0.3.0
+
+- Add paginated Coinbase Exchange hourly history download and deterministic UTC resampling to four-hour candles.
+- Add `download-coinbase-history` command with a separate default data file.
+- Add `diagnose-gaps` command and remove the prior diagnostic-script timedelta/timezone warnings.
+- Add a research data-quality gate for configured start coverage, total missing rate, and largest contiguous gap.
+- Add `--allow-data-gaps` for explicitly diagnostic backtests only.
+- Add four Coinbase/gap tests; strict suite now contains 20 tests.

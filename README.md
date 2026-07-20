@@ -13,16 +13,14 @@ The strategy does **not** predict price or volatility. It uses:
 - one-bar signal lag to prevent same-bar lookahead;
 - a local paper account that advances only once per completed candle.
 
-The default research timeframe is **4 hours** and the default public data source is Kraken. No exchange keys are needed to download public candles. No live-order code is enabled.
+The default research timeframe is **4 hours** and the default public data source is Kraken through CCXT. No exchange keys are needed to download public candles. No live-order code is enabled.
 
 ## Architecture
 
 ```text
-Kraken OHLCVT archive ----\
-                           -> normalized local history -> features -> target position
-Kraken recent REST bars --/                              -> delayed execution
-                                                          -> fees/slippage/risk
-                                                          -> metrics and paper state
+public OHLCV -> normalization/coverage checks -> features -> target position
+             -> one-bar delayed execution -> fees/slippage -> risk controls
+             -> metrics, equity curve, and paper-account state
 ```
 
 ## Quick start
@@ -39,41 +37,24 @@ pytest -q
 python -m btc_trend_bot.cli demo
 ```
 
-## Multi-year historical data
-
-The REST endpoint alone does not provide a multi-year backtest. Download Kraken's complete OHLCVT ZIP and import it directly:
-
-```powershell
-python -m btc_trend_bot.cli import-kraken-history `
-    --archive "$HOME\Downloads\Kraken_OHLCVT.zip"
-```
-
-Then append recent completed candles and inspect coverage:
+Download public BTC data and run the backtest:
 
 ```powershell
 python -m btc_trend_bot.cli download
-python -m btc_trend_bot.cli data-status
 python -m btc_trend_bot.cli backtest
 ```
 
-See [`HISTORICAL_DATA.md`](HISTORICAL_DATA.md) for the official download page, archive format, pair aliases, update workflow, and troubleshooting.
+Advance the local paper account by one completed bar:
 
-## Commands
-
-```text
-python -m btc_trend_bot.cli demo
-python -m btc_trend_bot.cli import-kraken-history --archive <path>
-python -m btc_trend_bot.cli download
-python -m btc_trend_bot.cli data-status
-python -m btc_trend_bot.cli backtest
+```powershell
 python -m btc_trend_bot.cli paper-step
 ```
 
-The `download` command is merge-safe: if historical data already exists, it appends or replaces only overlapping recent timestamps instead of overwriting the complete file.
+Run `paper-step` manually after a new four-hour candle closes. Later, Windows Task Scheduler can invoke the same command on a schedule.
 
 ## Outputs
 
-- `data/btc_usd_4h.csv`: merged historical and recent candles
+- `data/btc_usd_4h.csv`: downloaded candles
 - `outputs/backtest_bars.csv`: bar-by-bar research output
 - `outputs/metrics.json`: strategy and benchmark metrics
 - `outputs/equity_curve.png`: strategy versus BTC buy-and-hold
@@ -111,4 +92,19 @@ A positive total return alone is not evidence of skill. Review drawdown, turnove
 
 ## Important limitation
 
-This repository is a research and paper-trading scaffold, not financial advice and not a production trading system. Public and downloadable candle data can contain gaps or revisions. Paper fills are approximations. Do not connect real capital without independent review, exchange-specific margin modeling, reconciliation, monitoring, and kill switches.
+This repository is a research and paper-trading scaffold, not financial advice and not a production trading system. Public candle APIs can contain gaps or revisions. Paper fills are approximations. Do not connect real capital without independent review, exchange-specific margin modeling, reconciliation, monitoring, and kill switches.
+
+## Continuous historical BTC-USD data
+
+Kraken's recent OHLC endpoint cannot bridge the seam between a stale archive
+and its rolling recent window. Version 0.3.0 can instead download paginated
+Coinbase Exchange one-hour candles and resample complete groups into UTC-aligned
+four-hour bars:
+
+```powershell
+python -m btc_trend_bot.cli download-coinbase-history
+python -m btc_trend_bot.cli diagnose-gaps --data data/btc_usd_4h_coinbase.csv
+python -m btc_trend_bot.cli backtest --data data/btc_usd_4h_coinbase.csv
+```
+
+See `DATA_REPAIR.md` for the complete workflow and data-quality gates.

@@ -68,7 +68,7 @@ python -m btc_trend_bot.cli demo
 Expected version:
 
 ```text
-0.2.0
+0.2.1
 ```
 
 Expected tests:
@@ -176,3 +176,17 @@ git add .
 git commit -m "Add trade-level performance reporting"
 git push -u origin feature/trade-reporting
 ```
+
+## v0.3.0: repair historical coverage with Coinbase
+
+```powershell
+python -m btc_trend_bot.cli download-coinbase-history
+python -m btc_trend_bot.cli data-status --data data/btc_usd_4h_coinbase.csv
+python -m btc_trend_bot.cli diagnose-gaps --data data/btc_usd_4h_coinbase.csv
+python -m btc_trend_bot.cli backtest --data data/btc_usd_4h_coinbase.csv
+```
+
+The downloader may make a few hundred small public requests for a 2018-present
+hourly history. It pauses between pages. Do not interrupt it unless it reports
+an error. Re-running currently rebuilds the source file from the configured
+start.
