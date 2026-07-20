@@ -1,0 +1,864 @@
+diff --git a/.gitignore b/.gitignore
+index 472b9eda0ae3496cdba3b3c8e9f7bd97ff4f3ed1..c639f211d572f7594509886ee2a33f2381700724 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -16,3 +16,7 @@ paper/*.csv
+ !paper/.gitkeep
+ .DS_Store
+ Thumbs.db
++# Large vendor data archives
++Kraken_OHLCVT*.zip
++data/raw/
++data/*.zip
+diff --git a/CHANGES.md b/CHANGES.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..8f12ce09e0d1325b0af1f725bbc613c02201e12f
+--- /dev/null
++++ b/CHANGES.md
+@@ -0,0 +1,21 @@
++# Changes
++
++## 0.2.0
++
++- Added direct import of Kraken's complete OHLCVT ZIP without extracting it.
++- Added support for `XBTUSD`, `BTCUSD`, and `XXBTZUSD` archive pair aliases.
++- Added headerless seven-column archive parsing and tolerant eight-column REST-style parsing.
++- Added safe timestamp-based merging of archive and recent REST candles.
++- Changed `download` so it updates an existing history file instead of overwriting it.
++- Added `data-status` coverage reporting.
++- Added direct ZIP, direct CSV, and extracted-directory import paths.
++- Added five archive and merge tests; the suite now contains 16 tests.
++- Added `HISTORICAL_DATA.md` with the complete Windows workflow.
++
++## 0.1.1
++
++- Replaced deprecated generic NumPy timedelta construction with explicit units.
++
++## 0.1.0
++
++- Initial research and paper-trading scaffold.
+diff --git a/HISTORICAL_DATA.md b/HISTORICAL_DATA.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..957e502861c02f825e671a3fdd5c405291546428
+--- /dev/null
++++ b/HISTORICAL_DATA.md
+@@ -0,0 +1,118 @@
++# Kraken historical OHLCVT workflow
++
++Kraken's public REST OHLC endpoint is useful for recent updates but returns only a limited recent window. For a multi-year backtest, use Kraken's downloadable OHLCVT archive first, then use the REST downloader to append recent completed candles.
++
++Official Kraken support page:
++
++```text
++https://support.kraken.com/articles/360047124832-downloadable-historical-ohlcvt-open-high-low-close-volume-trades-data
++```
++
++On that page, choose **Single ZIP File** under **Complete Data**. Kraken's archive includes headerless CSV files for 1, 5, 15, 30, 60, 240, 720, and 1440-minute intervals. For the default four-hour strategy, the importer looks for `XBTUSD_240.csv` and also recognizes common Kraken aliases such as `XXBTZUSD_240.csv`.
++
++## Recommended storage
++
++The complete archive can be large. Keep it outside the Git repository, for example:
++
++```text
++C:\Users\<you>\Downloads\Kraken_OHLCVT.zip
++```
++
++The importer reads the matching CSV directly inside the ZIP. You do not need to extract the entire archive.
++
++## Import the complete archive
++
++From the activated project virtual environment:
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "$HOME\Downloads\Kraken_OHLCVT.zip"
++```
++
++The command:
++
++1. Finds the correct pair and interval inside the archive.
++2. Converts Unix timestamps to UTC.
++3. Validates OHLC and volume values.
++4. Removes data before `market.start` in `config/settings.yaml`.
++5. Merges with an existing local CSV if one exists.
++6. Preserves existing recent REST rows on overlapping timestamps.
++7. Writes the result to `market.data_path`.
++
++Use an explicit pair override only if the archive uses an unexpected pair name:
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "$HOME\Downloads\Kraken_OHLCVT.zip" `
++    --pair XBTUSD
++```
++
++Use `--replace` only when you intentionally want to discard the existing local candle file:
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "$HOME\Downloads\Kraken_OHLCVT.zip" `
++    --replace
++```
++
++## Inspect coverage
++
++```powershell
++python -m btc_trend_bot.cli data-status
++```
++
++Expected output should show many thousands of four-hour candles and a date range beginning near the configured start date.
++
++Kraken notes that its archive omits intervals in which no trades occurred. That behavior can create legitimate gaps for thinly traded pairs. For BTC/USD at four-hour resolution, large gaps should still be investigated before trusting a backtest.
++
++## Append recent REST candles
++
++After importing the archive:
++
++```powershell
++python -m btc_trend_bot.cli download
++```
++
++Unlike the earlier version of this project, `download` no longer overwrites the historical CSV. It downloads recent completed candles and merges them into the existing file. Recent rows take precedence on overlapping timestamps.
++
++Run the coverage check again:
++
++```powershell
++python -m btc_trend_bot.cli data-status
++```
++
++## Run the full backtest
++
++Archive the original 720-bar smoke test before overwriting outputs:
++
++```powershell
++New-Item -ItemType Directory -Force results\kraken_720_bar_smoke_test
++Copy-Item outputs\* results\kraken_720_bar_smoke_test\ -ErrorAction SilentlyContinue
++```
++
++Then run:
++
++```powershell
++python -m btc_trend_bot.cli backtest
++```
++
++Review:
++
++```text
++outputs\metrics.json
++outputs\equity_curve.png
++outputs\backtest_bars.csv
++```
++
++Do not tune strategy parameters merely because the first multi-year result is weak. First add year-by-year attribution, trade-level reporting, explicit development/validation/holdout splits, and cost sensitivity.
++
++## Quarterly updates
++
++Kraken also publishes quarterly incremental ZIP files. Import each update using the same command:
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "C:\path\to\quarterly-update.zip"
++```
++
++The importer merges new rows by timestamp and leaves the complete local history in one normalized CSV.
+diff --git a/MIGRATION_NOTES.md b/MIGRATION_NOTES.md
+index 9da81dcffb58f8a62b4234c3898e3c31fbda0f71..e3feee25ac5737c2f857a7a3b1cee4628f89141d 100644
+--- a/MIGRATION_NOTES.md
++++ b/MIGRATION_NOTES.md
+@@ -34,3 +34,7 @@ This project preserves the strongest architectural lessons from the prior SPY vo
+ The initial hypothesis is that a long/flat BTC trend signal can improve drawdown and risk-adjusted performance relative to BTC buy-and-hold after fees and slippage. Lagged realized volatility is used only to size exposure, not to predict direction.
+ 
+ The package also runs a fixed-size trend arm. The volatility-scaled version should not be retained merely because it is more sophisticated; it must outperform the fixed-size arm on predeclared risk and robustness criteria.
++
++## Historical-data correction in v0.2.0
++
++The original REST-only downloader could retrieve only Kraken's recent OHLC window, producing a 720-bar smoke test rather than a multi-year research sample. Version 0.2.0 adds a first-class importer for Kraken's downloadable OHLCVT archive and changes recent REST downloads into merge-safe incremental updates.
+diff --git a/README.md b/README.md
+index 7ccfdd36ecf664b6cf2d515a3096b8e097f1e3cc..43652b7e0c24feb100f95bf949a96c58f3133f46 100644
+--- a/README.md
++++ b/README.md
+@@ -13,14 +13,16 @@ The strategy does **not** predict price or volatility. It uses:
+ - one-bar signal lag to prevent same-bar lookahead;
+ - a local paper account that advances only once per completed candle.
+ 
+-The default research timeframe is **4 hours** and the default public data source is Kraken through CCXT. No exchange keys are needed to download public candles. No live-order code is enabled.
++The default research timeframe is **4 hours** and the default public data source is Kraken. No exchange keys are needed to download public candles. No live-order code is enabled.
+ 
+ ## Architecture
+ 
+ ```text
+-public OHLCV -> normalization/coverage checks -> features -> target position
+-             -> one-bar delayed execution -> fees/slippage -> risk controls
+-             -> metrics, equity curve, and paper-account state
++Kraken OHLCVT archive ----\
++                           -> normalized local history -> features -> target position
++Kraken recent REST bars --/                              -> delayed execution
++                                                          -> fees/slippage/risk
++                                                          -> metrics and paper state
+ ```
+ 
+ ## Quick start
+@@ -37,24 +39,41 @@ pytest -q
+ python -m btc_trend_bot.cli demo
+ ```
+ 
+-Download public BTC data and run the backtest:
++## Multi-year historical data
++
++The REST endpoint alone does not provide a multi-year backtest. Download Kraken's complete OHLCVT ZIP and import it directly:
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "$HOME\Downloads\Kraken_OHLCVT.zip"
++```
++
++Then append recent completed candles and inspect coverage:
+ 
+ ```powershell
+ python -m btc_trend_bot.cli download
++python -m btc_trend_bot.cli data-status
+ python -m btc_trend_bot.cli backtest
+ ```
+ 
+-Advance the local paper account by one completed bar:
++See [`HISTORICAL_DATA.md`](HISTORICAL_DATA.md) for the official download page, archive format, pair aliases, update workflow, and troubleshooting.
+ 
+-```powershell
++## Commands
++
++```text
++python -m btc_trend_bot.cli demo
++python -m btc_trend_bot.cli import-kraken-history --archive <path>
++python -m btc_trend_bot.cli download
++python -m btc_trend_bot.cli data-status
++python -m btc_trend_bot.cli backtest
+ python -m btc_trend_bot.cli paper-step
+ ```
+ 
+-Run `paper-step` manually after a new four-hour candle closes. Later, Windows Task Scheduler can invoke the same command on a schedule.
++The `download` command is merge-safe: if historical data already exists, it appends or replaces only overlapping recent timestamps instead of overwriting the complete file.
+ 
+ ## Outputs
+ 
+-- `data/btc_usd_4h.csv`: downloaded candles
++- `data/btc_usd_4h.csv`: merged historical and recent candles
+ - `outputs/backtest_bars.csv`: bar-by-bar research output
+ - `outputs/metrics.json`: strategy and benchmark metrics
+ - `outputs/equity_curve.png`: strategy versus BTC buy-and-hold
+@@ -92,4 +111,4 @@ A positive total return alone is not evidence of skill. Review drawdown, turnove
+ 
+ ## Important limitation
+ 
+-This repository is a research and paper-trading scaffold, not financial advice and not a production trading system. Public candle APIs can contain gaps or revisions. Paper fills are approximations. Do not connect real capital without independent review, exchange-specific margin modeling, reconciliation, monitoring, and kill switches.
++This repository is a research and paper-trading scaffold, not financial advice and not a production trading system. Public and downloadable candle data can contain gaps or revisions. Paper fills are approximations. Do not connect real capital without independent review, exchange-specific margin modeling, reconciliation, monitoring, and kill switches.
+diff --git a/SETUP_WINDOWS.md b/SETUP_WINDOWS.md
+index 388b60478e48dc85185505bd13bc447fe3c2ea12..75afdd67a905801516d11b01d1409ca33b0f1cab 100644
+--- a/SETUP_WINDOWS.md
++++ b/SETUP_WINDOWS.md
+@@ -61,19 +61,46 @@ pip install -e .
+ 
+ ```powershell
+ python -c "import btc_trend_bot; print(btc_trend_bot.__version__)"
+-pytest -q
++pytest -q -W error::DeprecationWarning
+ python -m btc_trend_bot.cli demo
+ ```
+ 
+-## 7. Download public BTC candles
++Expected version:
++
++```text
++0.2.0
++```
++
++Expected tests:
++
++```text
++16 passed
++```
++
++## 7. Import complete Kraken history
++
++Read [`HISTORICAL_DATA.md`](HISTORICAL_DATA.md), download `Kraken_OHLCVT.zip` from Kraken's official support page, and keep it outside the repository.
++
++```powershell
++python -m btc_trend_bot.cli import-kraken-history `
++    --archive "$HOME\Downloads\Kraken_OHLCVT.zip"
++```
++
++Inspect the imported range:
++
++```powershell
++python -m btc_trend_bot.cli data-status
++```
++
++## 8. Append recent public BTC candles
+ 
+ ```powershell
+ python -m btc_trend_bot.cli download
+ ```
+ 
+-The default is Kraken `BTC/USD`, four-hour candles. No credentials are required for public OHLCV data.
++The command merges recent candles into the imported history instead of replacing it.
+ 
+-## 8. Run the backtest
++## 9. Run the backtest
+ 
+ ```powershell
+ python -m btc_trend_bot.cli backtest
+@@ -87,7 +114,7 @@ outputs\equity_curve.png
+ outputs\backtest_bars.csv
+ ```
+ 
+-## 9. Advance the local paper bot
++## 10. Advance the local paper bot
+ 
+ ```powershell
+ python -m btc_trend_bot.cli paper-step
+@@ -103,7 +130,7 @@ Remove-Item paper\paper_trades.csv -ErrorAction SilentlyContinue
+ python -m btc_trend_bot.cli paper-step
+ ```
+ 
+-## 10. Initialize Git
++## 11. Initialize Git
+ 
+ ```powershell
+ git init
+@@ -113,7 +140,7 @@ git add .
+ git commit -m "Initial BTC trend research and paper trading scaffold"
+ ```
+ 
+-## 11. Create a new GitHub repository
++## 12. Create a new GitHub repository
+ 
+ Create an empty repository on GitHub named `btc-trend-bot`. Do not initialize it with a README, `.gitignore`, or license because those files already exist locally.
+ 
+@@ -138,14 +165,14 @@ git remote -v
+ git log --oneline --decorate -5
+ ```
+ 
+-## 12. Normal development workflow
++## 13. Normal development workflow
+ 
+ ```powershell
+ git status
+-git switch -c feature/funding-filter
++git switch -c feature/trade-reporting
+ # make changes
+-pytest -q
++pytest -q -W error::DeprecationWarning
+ git add .
+-git commit -m "Add funding-aware trend filter"
+-git push -u origin feature/funding-filter
++git commit -m "Add trade-level performance reporting"
++git push -u origin feature/trade-reporting
+ ```
+diff --git a/pyproject.toml b/pyproject.toml
+index 507fbeee484ebaa8c648153f1b60a3e439bb7cf0..ef2b29e6b557d7a231dbf77a5c8c3adc365bd5c1 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "btc-trend-bot"
+-version = "0.1.1"
++version = "0.2.0"
+ description = "Research-first Bitcoin trend backtester and local paper bot"
+ readme = "README.md"
+ requires-python = ">=3.11"
+diff --git a/src/btc_trend_bot/__init__.py b/src/btc_trend_bot/__init__.py
+index 4874d23f541347c9735ad95156a5c93e329df63e..00c4c00a5a08ceba1fced534c911454d0ecbdb0f 100644
+--- a/src/btc_trend_bot/__init__.py
++++ b/src/btc_trend_bot/__init__.py
+@@ -1,3 +1,3 @@
+ """BTC trend research and paper-trading package."""
+ 
+-__version__ = "0.1.1"
++__version__ = "0.2.0"
+diff --git a/src/btc_trend_bot/cli.py b/src/btc_trend_bot/cli.py
+index ad17345dc1aa486930dcf45ccdc656cb7b8c442e..865be9400a27628e6637556292ae0c91beb99012 100644
+--- a/src/btc_trend_bot/cli.py
++++ b/src/btc_trend_bot/cli.py
+@@ -3,25 +3,122 @@ from __future__ import annotations
+ import argparse
+ from pathlib import Path
+ 
++import pandas as pd
++
+ from btc_trend_bot.config import load_config
+-from btc_trend_bot.data import download_ohlcv, save_ohlcv
++from btc_trend_bot.data import (
++    download_ohlcv,
++    load_ohlcv_csv,
++    merge_ohlcv_frames,
++    save_ohlcv,
++    timeframe_to_timedelta,
++    update_ohlcv_file,
++)
++from btc_trend_bot.kraken_archive import load_kraken_ohlcvt_archive
+ from btc_trend_bot.paper import run_paper_step
+ from btc_trend_bot.pipeline import print_metrics, run_research, save_outputs
+ from btc_trend_bot.synthetic import generate_synthetic_ohlcv
+ 
+ 
++def _print_coverage(prefix: str, report) -> None:
++    print(
++        f"{prefix}: {report.rows:,} candles from "
++        f"{report.first_timestamp.isoformat()} to {report.last_timestamp.isoformat()}"
++    )
++    print(f"Coverage: {report.missing_intervals:,} missing intervals; duplicates: {report.duplicate_timestamps}")
++
++
+ def command_download(config_path: str) -> None:
++    """Download recent REST candles and merge them into the historical file."""
+     cfg = load_config(config_path)
+     market = cfg["market"]
+-    frame = download_ohlcv(
++    timeframe = str(market["timeframe"])
++    data_path = Path(str(market["data_path"]))
++    configured_start = str(market["start"])
++    start = configured_start
++
++    if data_path.exists():
++        existing, existing_report = load_ohlcv_csv(data_path, timeframe=timeframe)
++        # Include one overlap bar so revised latest values replace the old row.
++        start = (existing_report.last_timestamp - timeframe_to_timedelta(timeframe)).isoformat()
++        print(f"Updating existing history after {existing_report.last_timestamp.isoformat()}.")
++
++    recent = download_ohlcv(
+         exchange_id=str(market["exchange"]),
+         symbol=str(market["symbol"]),
+-        timeframe=str(market["timeframe"]),
+-        start=str(market["start"]),
++        timeframe=timeframe,
++        start=start,
+         max_bars=int(market["max_download_bars"]),
+     )
+-    path = save_ohlcv(frame, str(market["data_path"]))
+-    print(f"Saved {len(frame):,} completed candles to {path}")
++    merged, report = update_ohlcv_file(data_path, recent, timeframe=timeframe)
++    print(f"Downloaded {len(recent):,} recent completed candles.")
++    _print_coverage(f"Saved merged data to {data_path}", report)
++
++    requested = pd.Timestamp(configured_start)
++    if requested.tzinfo is None:
++        requested = requested.tz_localize("UTC")
++    else:
++        requested = requested.tz_convert("UTC")
++    if not data_path.exists() or len(merged) <= len(recent):
++        if recent["timestamp"].iloc[0] > requested + timeframe_to_timedelta(timeframe):
++            print(
++                "Warning: the REST endpoint did not return the configured historical start. "
++                "Import Kraken_OHLCVT.zip with the import-kraken-history command for full history."
++            )
++
++
++def command_import_kraken_history(
++    config_path: str,
++    archive_path: str,
++    pair: str | None,
++    replace: bool,
++) -> None:
++    cfg = load_config(config_path)
++    market = cfg["market"]
++    timeframe = str(market["timeframe"])
++    data_path = Path(str(market["data_path"]))
++
++    archive_frame, member = load_kraken_ohlcvt_archive(
++        archive_path=archive_path,
++        symbol=str(market["symbol"]),
++        timeframe=timeframe,
++        pair_override=pair,
++    )
++
++    start = pd.Timestamp(str(market["start"]))
++    if start.tzinfo is None:
++        start = start.tz_localize("UTC")
++    else:
++        start = start.tz_convert("UTC")
++    archive_frame = archive_frame.loc[archive_frame["timestamp"] >= start].reset_index(drop=True)
++    if archive_frame.empty:
++        raise ValueError(
++            f"Archive member {member!r} contains no rows on or after configured start {start.isoformat()}."
++        )
++
++    frames = [archive_frame]
++    if data_path.exists() and not replace:
++        existing, _ = load_ohlcv_csv(data_path, timeframe=timeframe)
++        # Existing data is later in the list, so recent REST rows win on overlap.
++        frames.append(existing)
++    merged, report = merge_ohlcv_frames(frames, timeframe=timeframe)
++    save_ohlcv(merged, data_path)
++
++    print(f"Imported {len(archive_frame):,} candles from archive member {member!r}.")
++    _print_coverage(f"Saved merged history to {data_path}", report)
++    if report.missing_intervals:
++        print(
++            "Note: Kraken archives omit intervals with no trades. Large or unexpected gaps "
++            "should still be investigated before backtesting."
++        )
++
++
++def command_data_status(config_path: str, data_path: str | None) -> None:
++    cfg = load_config(config_path)
++    market = cfg["market"]
++    resolved = Path(data_path or str(market["data_path"]))
++    _, report = load_ohlcv_csv(resolved, timeframe=str(market["timeframe"]))
++    _print_coverage(str(resolved), report)
+ 
+ 
+ def command_backtest(config_path: str, data_path: str | None) -> None:
+@@ -44,7 +141,23 @@ def main() -> None:
+     parser.add_argument("--config", default="config/settings.yaml")
+     subparsers = parser.add_subparsers(dest="command", required=True)
+ 
+-    subparsers.add_parser("download", help="Download public OHLCV through CCXT")
++    subparsers.add_parser("download", help="Download recent public OHLCV and merge with local history")
++
++    importer = subparsers.add_parser(
++        "import-kraken-history",
++        help="Import Kraken's downloadable OHLCVT ZIP, CSV, or extracted directory",
++    )
++    importer.add_argument("--archive", required=True, help="Path to Kraken_OHLCVT.zip or extracted data")
++    importer.add_argument("--pair", default=None, help="Optional archive pair override, e.g. XBTUSD")
++    importer.add_argument(
++        "--replace",
++        action="store_true",
++        help="Replace the local candle file instead of preserving existing REST rows",
++    )
++
++    status = subparsers.add_parser("data-status", help="Show local candle coverage and date range")
++    status.add_argument("--data", default=None, help="Override market.data_path")
++
+     backtest = subparsers.add_parser("backtest", help="Run a historical backtest")
+     backtest.add_argument("--data", default=None, help="Override market.data_path")
+     subparsers.add_parser("demo", help="Run against generated synthetic data")
+@@ -57,6 +170,10 @@ def main() -> None:
+ 
+     if args.command == "download":
+         command_download(args.config)
++    elif args.command == "import-kraken-history":
++        command_import_kraken_history(args.config, args.archive, args.pair, args.replace)
++    elif args.command == "data-status":
++        command_data_status(args.config, args.data)
+     elif args.command == "backtest":
+         command_backtest(args.config, args.data)
+     elif args.command == "demo":
+diff --git a/src/btc_trend_bot/data.py b/src/btc_trend_bot/data.py
+index 7365f953b039823c9fa0cb1527a1f9e0b8a20549..ee5554a1fffda60d3e4077e8ed9235bf75878f6b 100644
+--- a/src/btc_trend_bot/data.py
++++ b/src/btc_trend_bot/data.py
+@@ -23,9 +23,19 @@ def timeframe_to_timedelta(timeframe: str) -> pd.Timedelta:
+     if len(timeframe) < 2 or timeframe[-1] not in units:
+         raise ValueError(f"Unsupported timeframe: {timeframe}")
+     value = int(timeframe[:-1])
++    if value <= 0:
++        raise ValueError(f"Timeframe value must be positive: {timeframe}")
+     return pd.to_timedelta(value, unit=units[timeframe[-1]])
+ 
+ 
++def timeframe_to_minutes(timeframe: str) -> int:
++    step = timeframe_to_timedelta(timeframe)
++    minutes = step / pd.Timedelta(minutes=1)
++    if not float(minutes).is_integer():
++        raise ValueError(f"Timeframe does not resolve to whole minutes: {timeframe}")
++    return int(minutes)
++
++
+ def normalize_ohlcv(frame: pd.DataFrame, timeframe: str) -> tuple[pd.DataFrame, CoverageReport]:
+     missing = [column for column in REQUIRED_COLUMNS if column not in frame.columns]
+     if missing:
+@@ -151,3 +161,37 @@ def save_ohlcv(frame: pd.DataFrame, path: str | Path) -> Path:
+     file_path.parent.mkdir(parents=True, exist_ok=True)
+     frame.to_csv(file_path, index=False)
+     return file_path
++
++
++def merge_ohlcv_frames(
++    frames: list[pd.DataFrame],
++    timeframe: str,
++) -> tuple[pd.DataFrame, CoverageReport]:
++    """Merge OHLCV sources, preferring values from later frames on overlap."""
++    non_empty = [frame.copy() for frame in frames if frame is not None and not frame.empty]
++    if not non_empty:
++        raise ValueError("At least one non-empty OHLCV frame is required.")
++    combined = pd.concat(non_empty, ignore_index=True)
++    combined["timestamp"] = pd.to_datetime(combined["timestamp"], utc=True, errors="coerce")
++    combined = (
++        combined.sort_values("timestamp")
++        .drop_duplicates("timestamp", keep="last")
++        .reset_index(drop=True)
++    )
++    return normalize_ohlcv(combined, timeframe=timeframe)
++
++
++def update_ohlcv_file(
++    existing_path: str | Path,
++    recent_frame: pd.DataFrame,
++    timeframe: str,
++) -> tuple[pd.DataFrame, CoverageReport]:
++    path = Path(existing_path)
++    frames: list[pd.DataFrame] = []
++    if path.exists():
++        existing, _ = load_ohlcv_csv(path, timeframe=timeframe)
++        frames.append(existing)
++    frames.append(recent_frame)
++    merged, report = merge_ohlcv_frames(frames, timeframe=timeframe)
++    save_ohlcv(merged, path)
++    return merged, report
+diff --git a/src/btc_trend_bot/kraken_archive.py b/src/btc_trend_bot/kraken_archive.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..339a7f7cb7f39fd64b2cca845dd7c82547ab7de7
+--- /dev/null
++++ b/src/btc_trend_bot/kraken_archive.py
+@@ -0,0 +1,157 @@
++from __future__ import annotations
++
++import re
++import zipfile
++from pathlib import Path, PurePosixPath
++from typing import BinaryIO, Iterable
++
++import pandas as pd
++
++from btc_trend_bot.data import REQUIRED_COLUMNS, normalize_ohlcv, timeframe_to_minutes
++
++# Kraken's downloadable OHLCVT CSVs are headerless and contain:
++# timestamp, open, high, low, close, volume, trades.
++KRAKEN_ARCHIVE_COLUMNS = [
++    "timestamp",
++    "open",
++    "high",
++    "low",
++    "close",
++    "volume",
++    "trades",
++]
++
++
++def _compact_symbol(value: str) -> str:
++    return re.sub(r"[^A-Z0-9]", "", value.upper())
++
++
++def kraken_pair_candidates(symbol: str, pair_override: str | None = None) -> set[str]:
++    """Return plausible Kraken archive pair names for a unified symbol.
++
++    Kraken historically uses XBT for Bitcoin and sometimes exposes internal
++    asset-code variants such as XXBTZUSD. The archive normally uses XBTUSD.
++    """
++    if pair_override:
++        return {_compact_symbol(pair_override)}
++
++    compact = _compact_symbol(symbol)
++    candidates = {compact}
++    if compact.startswith("BTC"):
++        quote = compact[3:]
++        candidates.update({f"XBT{quote}", f"XXBTZ{quote}"})
++    elif compact.startswith("XBT"):
++        quote = compact[3:]
++        candidates.update({f"BTC{quote}", f"XXBTZ{quote}"})
++    return candidates
++
++
++def _member_pair_and_interval(name: str) -> tuple[str, int] | None:
++    basename = PurePosixPath(name).name
++    match = re.fullmatch(r"(.+)_([0-9]+)\.csv", basename, flags=re.IGNORECASE)
++    if not match:
++        return None
++    return _compact_symbol(match.group(1)), int(match.group(2))
++
++
++def find_kraken_archive_member(
++    names: Iterable[str],
++    symbol: str,
++    timeframe: str,
++    pair_override: str | None = None,
++) -> str:
++    interval = timeframe_to_minutes(timeframe)
++    candidates = kraken_pair_candidates(symbol, pair_override=pair_override)
++    matches: list[str] = []
++    available_for_pair: set[int] = set()
++
++    for name in names:
++        parsed = _member_pair_and_interval(name)
++        if parsed is None:
++            continue
++        pair, member_interval = parsed
++        if pair not in candidates:
++            continue
++        available_for_pair.add(member_interval)
++        if member_interval == interval:
++            matches.append(name)
++
++    if not matches:
++        available = ", ".join(str(value) for value in sorted(available_for_pair)) or "none"
++        raise FileNotFoundError(
++            "No Kraken archive CSV matched "
++            f"symbol={symbol!r}, timeframe={timeframe!r}, candidates={sorted(candidates)}. "
++            f"Available intervals for matching pair names: {available}."
++        )
++    if len(matches) > 1:
++        # Prefer the shortest path, which is normally the canonical top-level file.
++        matches.sort(key=lambda value: (len(PurePosixPath(value).parts), len(value), value))
++    return matches[0]
++
++
++def _read_archive_csv(handle: BinaryIO, source_name: str) -> pd.DataFrame:
++    raw = pd.read_csv(handle, header=None)
++    if raw.shape[1] == 7:
++        raw.columns = KRAKEN_ARCHIVE_COLUMNS
++    elif raw.shape[1] == 8:
++        # Tolerate REST-shaped exports that include VWAP before volume/count.
++        raw.columns = [
++            "timestamp",
++            "open",
++            "high",
++            "low",
++            "close",
++            "vwap",
++            "volume",
++            "trades",
++        ]
++    else:
++        raise ValueError(
++            f"Kraken OHLCVT member {source_name!r} has {raw.shape[1]} columns; "
++            "expected 7 archive columns or 8 REST-style columns."
++        )
++
++    timestamp_numeric = pd.to_numeric(raw["timestamp"], errors="coerce")
++    if timestamp_numeric.isna().any():
++        raise ValueError(f"Kraken archive member {source_name!r} contains invalid timestamps.")
++
++    # Archive timestamps are Unix seconds. Also tolerate millisecond exports.
++    unit = "ms" if float(timestamp_numeric.abs().max()) >= 10_000_000_000 else "s"
++    raw["timestamp"] = pd.to_datetime(timestamp_numeric, unit=unit, utc=True)
++    return raw[REQUIRED_COLUMNS].copy()
++
++
++def load_kraken_ohlcvt_archive(
++    archive_path: str | Path,
++    symbol: str,
++    timeframe: str,
++    pair_override: str | None = None,
++) -> tuple[pd.DataFrame, str]:
++    """Load one Kraken OHLCVT CSV from a ZIP, directory, or direct CSV path."""
++    source = Path(archive_path)
++    if not source.exists():
++        raise FileNotFoundError(f"Kraken archive path not found: {source}")
++
++    if source.is_dir():
++        candidates = [str(path.relative_to(source)).replace("\\", "/") for path in source.rglob("*.csv")]
++        member = find_kraken_archive_member(
++            candidates, symbol=symbol, timeframe=timeframe, pair_override=pair_override
++        )
++        with (source / Path(member)).open("rb") as handle:
++            frame = _read_archive_csv(handle, member)
++    elif source.suffix.lower() == ".zip":
++        with zipfile.ZipFile(source) as archive:
++            member = find_kraken_archive_member(
++                archive.namelist(), symbol=symbol, timeframe=timeframe, pair_override=pair_override
++            )
++            with archive.open(member) as handle:
++                frame = _read_archive_csv(handle, member)
++    elif source.suffix.lower() == ".csv":
++        member = source.name
++        with source.open("rb") as handle:
++            frame = _read_archive_csv(handle, member)
++    else:
++        raise ValueError("Kraken history source must be a .zip file, .csv file, or extracted directory.")
++
++    normalized, _ = normalize_ohlcv(frame, timeframe=timeframe)
++    return normalized, member
+diff --git a/tests/test_kraken_archive.py b/tests/test_kraken_archive.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef17a4b27154ce0cd6b3e82f78d2ccdd4e192aa8
+--- /dev/null
++++ b/tests/test_kraken_archive.py
+@@ -0,0 +1,87 @@
++from __future__ import annotations
++
++import zipfile
++
++import pandas as pd
++import pytest
++
++from btc_trend_bot.data import merge_ohlcv_frames, timeframe_to_minutes
++from btc_trend_bot.kraken_archive import (
++    find_kraken_archive_member,
++    load_kraken_ohlcvt_archive,
++)
++
++
++def archive_rows() -> pd.DataFrame:
++    timestamps = pd.date_range("2024-01-01", periods=3, freq="4h", tz="UTC")
++    return pd.DataFrame(
++        {
++            0: [int(ts.timestamp()) for ts in timestamps],
++            1: [100.0, 101.0, 102.0],
++            2: [102.0, 103.0, 104.0],
++            3: [99.0, 100.0, 101.0],
++            4: [101.0, 102.0, 103.0],
++            5: [10.0, 11.0, 12.0],
++            6: [5, 6, 7],
++        }
++    )
++
++
++def test_timeframe_to_minutes():
++    assert timeframe_to_minutes("4h") == 240
++    assert timeframe_to_minutes("1d") == 1440
++
++
++def test_archive_member_matches_btc_alias():
++    member = find_kraken_archive_member(
++        ["nested/XBTUSD_60.csv", "nested/XBTUSD_240.csv"],
++        symbol="BTC/USD",
++        timeframe="4h",
++    )
++    assert member.endswith("XBTUSD_240.csv")
++
++
++def test_archive_member_reports_available_intervals():
++    with pytest.raises(FileNotFoundError, match="60"):
++        find_kraken_archive_member(
++            ["XBTUSD_60.csv"], symbol="BTC/USD", timeframe="4h"
++        )
++
++
++def test_load_kraken_zip_without_extracting(tmp_path):
++    archive_path = tmp_path / "Kraken_OHLCVT.zip"
++    payload = archive_rows().to_csv(index=False, header=False).encode("utf-8")
++    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
++        archive.writestr("Kraken_OHLCVT/XBTUSD_240.csv", payload)
++        archive.writestr("Kraken_OHLCVT/ETHUSD_240.csv", payload)
++
++    frame, member = load_kraken_ohlcvt_archive(
++        archive_path, symbol="BTC/USD", timeframe="4h"
++    )
++
++    assert member == "Kraken_OHLCVT/XBTUSD_240.csv"
++    assert list(frame.columns) == ["timestamp", "open", "high", "low", "close", "volume"]
++    assert len(frame) == 3
++    assert frame["timestamp"].dt.tz is not None
++    assert frame["close"].tolist() == [101.0, 102.0, 103.0]
++
++
++def test_merge_prefers_later_frame_on_overlap():
++    base = pd.DataFrame(
++        {
++            "timestamp": pd.date_range("2024-01-01", periods=2, freq="4h", tz="UTC"),
++            "open": [100.0, 101.0],
++            "high": [102.0, 103.0],
++            "low": [99.0, 100.0],
++            "close": [101.0, 102.0],
++            "volume": [10.0, 11.0],
++        }
++    )
++    recent = base.iloc[[1]].copy()
++    recent.loc[:, "close"] = 102.5
++    recent.loc[:, "high"] = 103.5
++
++    merged, report = merge_ohlcv_frames([base, recent], timeframe="4h")
++
++    assert report.rows == 2
++    assert merged.loc[1, "close"] == 102.5

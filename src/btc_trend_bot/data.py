@@ -22,9 +22,18 @@ def timeframe_to_timedelta(timeframe: str) -> pd.Timedelta:
     units = {"m": "min", "h": "h", "d": "d"}
     if len(timeframe) < 2 or timeframe[-1] not in units:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
-
     value = int(timeframe[:-1])
+    if value <= 0:
+        raise ValueError(f"Timeframe value must be positive: {timeframe}")
     return pd.to_timedelta(value, unit=units[timeframe[-1]])
+
+
+def timeframe_to_minutes(timeframe: str) -> int:
+    step = timeframe_to_timedelta(timeframe)
+    minutes = step.total_seconds() / 60.0
+    if not minutes.is_integer():
+        raise ValueError(f"Timeframe does not resolve to whole minutes: {timeframe}")
+    return int(minutes)
 
 
 def normalize_ohlcv(frame: pd.DataFrame, timeframe: str) -> tuple[pd.DataFrame, CoverageReport]:
@@ -152,3 +161,37 @@ def save_ohlcv(frame: pd.DataFrame, path: str | Path) -> Path:
     file_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(file_path, index=False)
     return file_path
+
+
+def merge_ohlcv_frames(
+    frames: list[pd.DataFrame],
+    timeframe: str,
+) -> tuple[pd.DataFrame, CoverageReport]:
+    """Merge OHLCV sources, preferring values from later frames on overlap."""
+    non_empty = [frame.copy() for frame in frames if frame is not None and not frame.empty]
+    if not non_empty:
+        raise ValueError("At least one non-empty OHLCV frame is required.")
+    combined = pd.concat(non_empty, ignore_index=True)
+    combined["timestamp"] = pd.to_datetime(combined["timestamp"], utc=True, errors="coerce")
+    combined = (
+        combined.sort_values("timestamp")
+        .drop_duplicates("timestamp", keep="last")
+        .reset_index(drop=True)
+    )
+    return normalize_ohlcv(combined, timeframe=timeframe)
+
+
+def update_ohlcv_file(
+    existing_path: str | Path,
+    recent_frame: pd.DataFrame,
+    timeframe: str,
+) -> tuple[pd.DataFrame, CoverageReport]:
+    path = Path(existing_path)
+    frames: list[pd.DataFrame] = []
+    if path.exists():
+        existing, _ = load_ohlcv_csv(path, timeframe=timeframe)
+        frames.append(existing)
+    frames.append(recent_frame)
+    merged, report = merge_ohlcv_frames(frames, timeframe=timeframe)
+    save_ohlcv(merged, path)
+    return merged, report

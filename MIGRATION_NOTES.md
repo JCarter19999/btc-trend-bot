@@ -34,3 +34,7 @@ This project preserves the strongest architectural lessons from the prior SPY vo
 The initial hypothesis is that a long/flat BTC trend signal can improve drawdown and risk-adjusted performance relative to BTC buy-and-hold after fees and slippage. Lagged realized volatility is used only to size exposure, not to predict direction.
 
 The package also runs a fixed-size trend arm. The volatility-scaled version should not be retained merely because it is more sophisticated; it must outperform the fixed-size arm on predeclared risk and robustness criteria.
+
+## Historical-data correction in v0.2.0
+
+The original REST-only downloader could retrieve only Kraken's recent OHLC window, producing a 720-bar smoke test rather than a multi-year research sample. Version 0.2.0 adds a first-class importer for Kraken's downloadable OHLCVT archive and changes recent REST downloads into merge-safe incremental updates.

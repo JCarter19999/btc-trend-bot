@@ -61,19 +61,46 @@ pip install -e .
 
 ```powershell
 python -c "import btc_trend_bot; print(btc_trend_bot.__version__)"
-pytest -q
+pytest -q -W error::DeprecationWarning
 python -m btc_trend_bot.cli demo
 ```
 
-## 7. Download public BTC candles
+Expected version:
+
+```text
+0.2.0
+```
+
+Expected tests:
+
+```text
+16 passed
+```
+
+## 7. Import complete Kraken history
+
+Read [`HISTORICAL_DATA.md`](HISTORICAL_DATA.md), download `Kraken_OHLCVT.zip` from Kraken's official support page, and keep it outside the repository.
+
+```powershell
+python -m btc_trend_bot.cli import-kraken-history `
+    --archive "$HOME\Downloads\Kraken_OHLCVT.zip"
+```
+
+Inspect the imported range:
+
+```powershell
+python -m btc_trend_bot.cli data-status
+```
+
+## 8. Append recent public BTC candles
 
 ```powershell
 python -m btc_trend_bot.cli download
 ```
 
-The default is Kraken `BTC/USD`, four-hour candles. No credentials are required for public OHLCV data.
+The command merges recent candles into the imported history instead of replacing it.
 
-## 8. Run the backtest
+## 9. Run the backtest
 
 ```powershell
 python -m btc_trend_bot.cli backtest
@@ -87,7 +114,7 @@ outputs\equity_curve.png
 outputs\backtest_bars.csv
 ```
 
-## 9. Advance the local paper bot
+## 10. Advance the local paper bot
 
 ```powershell
 python -m btc_trend_bot.cli paper-step
@@ -103,7 +130,7 @@ Remove-Item paper\paper_trades.csv -ErrorAction SilentlyContinue
 python -m btc_trend_bot.cli paper-step
 ```
 
-## 10. Initialize Git
+## 11. Initialize Git
 
 ```powershell
 git init
@@ -113,7 +140,7 @@ git add .
 git commit -m "Initial BTC trend research and paper trading scaffold"
 ```
 
-## 11. Create a new GitHub repository
+## 12. Create a new GitHub repository
 
 Create an empty repository on GitHub named `btc-trend-bot`. Do not initialize it with a README, `.gitignore`, or license because those files already exist locally.
 
@@ -138,14 +165,14 @@ git remote -v
 git log --oneline --decorate -5
 ```
 
-## 12. Normal development workflow
+## 13. Normal development workflow
 
 ```powershell
 git status
-git switch -c feature/funding-filter
+git switch -c feature/trade-reporting
 # make changes
-pytest -q
+pytest -q -W error::DeprecationWarning
 git add .
-git commit -m "Add funding-aware trend filter"
-git push -u origin feature/funding-filter
+git commit -m "Add trade-level performance reporting"
+git push -u origin feature/trade-reporting
 ```

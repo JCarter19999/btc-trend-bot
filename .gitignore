@@ -16,3 +16,7 @@ paper/*.csv
 !paper/.gitkeep
 .DS_Store
 Thumbs.db
+# Large vendor data archives
+Kraken_OHLCVT*.zip
+data/raw/
+data/*.zip
