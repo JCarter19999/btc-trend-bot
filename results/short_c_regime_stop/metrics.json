@@ -1,0 +1,144 @@
+{
+  "strategy": {
+    "starting_equity": 10000.0,
+    "ending_equity": 81771.92498930119,
+    "total_return": 7.177192498930118,
+    "annualized_return": 0.2788513193595814,
+    "annualized_volatility": 0.2563969387029606,
+    "sharpe": 1.0872917259893253,
+    "sortino": 1.589571623770129,
+    "max_drawdown": -0.3757258422844798,
+    "calmar": 0.7421669951263291,
+    "exposure": 0.473571695793918,
+    "total_turnover": 201.90321583580425,
+    "positive_bar_rate": 0.24424135535246647
+  },
+  "buy_and_hold": {
+    "starting_equity": 10000.0,
+    "ending_equity": 48004.883479293705,
+    "total_return": 3.8004883479293703,
+    "annualized_return": 0.20155666866424493,
+    "annualized_volatility": 0.647222615356829,
+    "sharpe": 0.60786751867744,
+    "sortino": 0.8653989726274925,
+    "max_drawdown": -0.8163733647425963,
+    "calmar": 0.24689275442958145,
+    "exposure": 1.0,
+    "total_turnover": 0.0,
+    "positive_bar_rate": 0.5103415103415103
+  },
+  "fixed_size_trend": {
+    "starting_equity": 10000.0,
+    "ending_equity": 284288.2217130855,
+    "total_return": 27.42882217130855,
+    "annualized_return": 0.4796603899144056,
+    "annualized_volatility": 0.4132318726581137,
+    "sharpe": 1.154477869100324,
+    "sortino": 1.6920524733321929,
+    "max_drawdown": -0.4403970969629383,
+    "calmar": 1.0891542955715068,
+    "exposure": 0.473571695793918,
+    "total_turnover": 173.0,
+    "positive_bar_rate": 0.24434824434824434
+  },
+  "block_bootstrap": {
+    "n": 18711,
+    "mean_bar_return": 0.0001272960137080919,
+    "ci_low": 4.0530819589327497e-05,
+    "ci_high": 0.0002196271104958207,
+    "probability_positive": 0.998,
+    "distinguishable_from_zero": true
+  },
+  "bootstraps": {
+    "vol_scaled": {
+      "n": 18711,
+      "mean_bar_return": 0.0001272960137080919,
+      "ci_low": 4.0530819589327497e-05,
+      "ci_high": 0.0002196271104958207,
+      "probability_positive": 0.998,
+      "distinguishable_from_zero": true
+    },
+    "fixed_size": {
+      "n": 18711,
+      "mean_bar_return": 0.0002178388364340984,
+      "ci_low": 9.442431073464991e-05,
+      "ci_high": 0.0003466127386938055,
+      "probability_positive": 0.9995,
+      "distinguishable_from_zero": true
+    },
+    "fixed_minus_buy_and_hold": {
+      "n": 18711,
+      "mean_bar_return": 3.81924413524186e-05,
+      "ci_low": -9.55856274100624e-05,
+      "ci_high": 0.0002078390918736895,
+      "probability_positive": 0.7375,
+      "distinguishable_from_zero": false
+    },
+    "fixed_minus_vol_scaled": {
+      "n": 18711,
+      "mean_bar_return": 9.05428227260065e-05,
+      "ci_low": 4.003474564795589e-05,
+      "ci_high": 0.00014592334352595072,
+      "probability_positive": 1.0,
+      "distinguishable_from_zero": true
+    }
+  },
+  "trade_summary": {
+    "vol_scaled": {
+      "trades": 132,
+      "wins": 53,
+      "losses": 79,
+      "win_rate": 0.4015151515151515,
+      "average_trade_return": 0.02389954008405405,
+      "median_trade_return": -0.0012357147928878098,
+      "average_win": 0.08455182824020638,
+      "average_loss": -0.01679123551437726,
+      "profit_factor": 2.1414951914771305,
+      "average_active_days": 11.188131313131311,
+      "largest_winner": 1.372788845376085,
+      "largest_loser": -0.12577630612985702,
+      "top_5_profit_contribution": 0.6874313654445798
+    },
+    "fixed_size": {
+      "trades": 132,
+      "wins": 54,
+      "losses": 78,
+      "win_rate": 0.4090909090909091,
+      "average_trade_return": 0.04967022014222012,
+      "median_trade_return": -0.0017093927723757507,
+      "average_win": 0.15516599682543686,
+      "average_loss": -0.023365317561545307,
+      "profit_factor": 2.1945057287086214,
+      "average_active_days": 11.188131313131311,
+      "largest_winner": 3.736048537749584,
+      "largest_loser": -0.14253246191647262,
+      "top_5_profit_contribution": 0.6859011620856214
+    }
+  },
+  "market_capture": {
+    "vol_scaled": {
+      "upside_capture": 0.2920799334669604,
+      "downside_capture": 0.2741512525298716,
+      "beta": 0.2242771288144582,
+      "annualized_arithmetic_alpha": 0.19054190487789782,
+      "correlation": 0.566142601430124
+    },
+    "fixed_size": {
+      "upside_capture": 0.45593069351443494,
+      "downside_capture": 0.4233602350253882,
+      "beta": 0.3867105822790955,
+      "annualized_arithmetic_alpha": 0.3249252069091102,
+      "correlation": 0.6056837601583396
+    }
+  },
+  "data": {
+    "rows": 18711,
+    "missing_intervals": 21,
+    "expected_intervals": 18732,
+    "missing_rate": 0.0011210762331838565,
+    "largest_gap_bars": 4,
+    "first_timestamp": "2018-01-01T00:00:00+00:00",
+    "last_timestamp": "2026-07-19T20:00:00+00:00",
+    "breaker_timestamp": null
+  }
+}
