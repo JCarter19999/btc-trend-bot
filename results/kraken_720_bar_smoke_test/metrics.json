@@ -1,0 +1,59 @@
+{
+  "strategy": {
+    "starting_equity": 10000.0,
+    "ending_equity": 9584.149335284563,
+    "total_return": -0.0415850664715437,
+    "annualized_return": -0.12135371124998795,
+    "annualized_volatility": 0.13663449244287332,
+    "sharpe": -0.8772383084862685,
+    "sortino": -1.2284228089794922,
+    "max_drawdown": -0.09549885623016974,
+    "calmar": -1.2707347086702616,
+    "exposure": 0.17222222222222222,
+    "total_turnover": 2.3391018123293974,
+    "positive_bar_rate": 0.08611111111111111
+  },
+  "buy_and_hold": {
+    "starting_equity": 10000.0,
+    "ending_equity": 9328.670784017893,
+    "total_return": -0.06713292159821072,
+    "annualized_return": -0.1907660105514335,
+    "annualized_volatility": 0.39502015249735645,
+    "sharpe": -0.3376856899851045,
+    "sortino": -0.48328162160624744,
+    "max_drawdown": -0.2936773730608079,
+    "calmar": -0.6495768079208952,
+    "exposure": 1.0,
+    "total_turnover": 0.0,
+    "positive_bar_rate": 0.4986111111111111
+  },
+  "fixed_size_trend": {
+    "starting_equity": 10000.0,
+    "ending_equity": 9569.065576006173,
+    "total_return": -0.04309344239938273,
+    "annualized_return": -0.1255589044827381,
+    "annualized_volatility": 0.13744521106993488,
+    "sharpe": -0.9061051577733408,
+    "sortino": -1.2651751866046903,
+    "max_drawdown": -0.09692238136968578,
+    "calmar": -1.295458311159582,
+    "exposure": 0.17222222222222222,
+    "total_turnover": 2.0,
+    "positive_bar_rate": 0.08611111111111111
+  },
+  "block_bootstrap": {
+    "n": 720,
+    "mean_bar_return": -5.47310552655096e-05,
+    "ci_low": -0.00022304741863736263,
+    "ci_high": 9.34438394480719e-05,
+    "probability_positive": 0.2365,
+    "distinguishable_from_zero": false
+  },
+  "data": {
+    "rows": 720,
+    "missing_intervals": 0,
+    "first_timestamp": "2026-03-22T00:00:00+00:00",
+    "last_timestamp": "2026-07-19T20:00:00+00:00",
+    "breaker_timestamp": null
+  }
+}
