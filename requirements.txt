@@ -1,0 +1,6 @@
+numpy>=1.26,<3
+pandas>=2.2,<3
+PyYAML>=6.0,<7
+matplotlib>=3.8,<4
+ccxt>=4.4,<5
+pytest>=8,<10
