@@ -112,3 +112,28 @@ See `DATA_REPAIR.md` for the complete workflow and data-quality gates.
 ## Research diagnostics (v0.4)
 
 Each backtest now also writes `trades.csv` and `yearly_performance.csv`. The metrics JSON and console report include separate bootstrap tests, trade concentration, and market-capture diagnostics. See `ADDITIONAL_TESTS.md` for the frozen long/flat control and mirrored long/short experiment.
+
+## Final short-overlay validation
+
+Version 0.6.0 adds a frozen validation command for Variant B. It compares the selective short overlay directly with the no-breaker long/flat control using a paired moving-block bootstrap, 1x/2x/3x/5x execution-cost stress, calendar-year held-out scoring, and an optional second-exchange replication file.
+
+```powershell
+python -m btc_trend_bot.cli `
+  validate-short-overlay `
+  --control-config config/settings_no_breaker.yaml `
+  --candidate-config config/settings_short_b_regime.yaml `
+  --data data\btc_usd_4h_coinbase.csv
+```
+
+Optional replication:
+
+```powershell
+python -m btc_trend_bot.cli `
+  validate-short-overlay `
+  --control-config config/settings_no_breaker.yaml `
+  --candidate-config config/settings_short_b_regime.yaml `
+  --data data\btc_usd_4h_coinbase.csv `
+  --replication-data data\btc_usd_4h_second_exchange.csv
+```
+
+Outputs are written under `outputs/validation/`.

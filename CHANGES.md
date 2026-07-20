@@ -60,3 +60,11 @@
 - Added upside/downside capture, beta, correlation, and arithmetic alpha diagnostics.
 - Added frozen no-breaker long/flat and mirrored long/short research configurations.
 - Added fixed-size position and turnover columns to the bar-level output.
+
+## 0.6.0
+
+- Added paired moving-block bootstrap of Variant B minus the frozen long/flat control.
+- Added 1x, 2x, 3x, and 5x fee/slippage sensitivity comparisons.
+- Added frozen calendar-year validation slices while preserving prior indicator history.
+- Added optional cross-exchange replication using a second normalized OHLCV CSV.
+- Added `validate-short-overlay` CLI command and machine-readable validation outputs.

@@ -20,6 +20,7 @@ from btc_trend_bot.kraken_archive import load_kraken_ohlcvt_archive
 from btc_trend_bot.paper import run_paper_step
 from btc_trend_bot.pipeline import print_metrics, run_research, save_outputs
 from btc_trend_bot.synthetic import generate_synthetic_ohlcv
+from btc_trend_bot.validation import validate_short_overlay
 
 
 def _print_coverage(prefix: str, report) -> None:
@@ -203,6 +204,34 @@ def command_backtest(config_path: str, data_path: str | None, allow_data_gaps: b
     print("\nSaved outputs under outputs/.")
 
 
+
+def command_validate_short_overlay(
+    control_config: str,
+    candidate_config: str,
+    data_path: str,
+    output_dir: str,
+    replication_data: str | None,
+    allow_data_gaps: bool,
+) -> None:
+    summary = validate_short_overlay(
+        control_config_path=control_config,
+        candidate_config_path=candidate_config,
+        data_path=data_path,
+        output_dir=output_dir,
+        replication_data_path=replication_data,
+        allow_data_gaps=allow_data_gaps,
+    )
+    full = summary["full_sample"]
+    bootstrap = summary["paired_bootstrap_candidate_minus_control"]
+    print("\nCandidate minus control")
+    for key in ("cagr_delta", "sharpe_delta", "drawdown_improvement", "calmar_delta", "candidate_short_pnl"):
+        print(f"  {key}: {full[key]}")
+    print("\nPaired bootstrap")
+    for key, value in bootstrap.items():
+        print(f"  {key}: {value}")
+    print(f"\nSaved validation outputs under {output_dir}.")
+
+
 def command_demo(config_path: str) -> None:
     frame = generate_synthetic_ohlcv()
     result, metrics = run_research(config_path=config_path, frame=frame)
@@ -247,6 +276,17 @@ def main() -> None:
     gaps.add_argument("--data", default=None, help="Override market.data_path")
     gaps.add_argument("--limit", type=int, default=25)
 
+    validation = subparsers.add_parser(
+        "validate-short-overlay",
+        help="Validate a frozen selective-short candidate against the long/flat control",
+    )
+    validation.add_argument("--control-config", default="config/settings_no_breaker.yaml")
+    validation.add_argument("--candidate-config", default="config/settings_short_b_regime.yaml")
+    validation.add_argument("--data", required=True, help="Primary OHLCV CSV")
+    validation.add_argument("--output", default="outputs/validation")
+    validation.add_argument("--replication-data", default=None, help="Optional second-exchange OHLCV CSV")
+    validation.add_argument("--allow-data-gaps", action="store_true")
+
     backtest = subparsers.add_parser("backtest", help="Run a historical backtest")
     backtest.add_argument("--data", default=None, help="Override market.data_path")
     backtest.add_argument(
@@ -274,6 +314,15 @@ def main() -> None:
         command_data_status(args.config, args.data)
     elif args.command == "diagnose-gaps":
         command_diagnose_gaps(args.config, args.data, args.limit)
+    elif args.command == "validate-short-overlay":
+        command_validate_short_overlay(
+            args.control_config,
+            args.candidate_config,
+            args.data,
+            args.output,
+            args.replication_data,
+            args.allow_data_gaps,
+        )
     elif args.command == "backtest":
         command_backtest(args.config, args.data, args.allow_data_gaps)
     elif args.command == "demo":
