@@ -61,8 +61,11 @@ def _latest_signal(cfg: dict[str, Any]) -> tuple[str, Decimal, Decimal]:
     step = timeframe_to_timedelta(str(market["timeframe"]))
     start = (pd.Timestamp.now(tz="UTC") - step * (lookback_bars + 10)).isoformat()
     frame = download_ohlcv(
-        exchange_id=str(market["exchange"]), symbol=str(market["symbol"]),
-        timeframe=str(market["timeframe"]), start=start, max_bars=lookback_bars,
+        exchange_id=str(market["exchange"]),
+        symbol=str(market["symbol"]),
+        timeframe=str(market["timeframe"]),
+        start=start,
+        max_bars=lookback_bars + 10,
     )
     normalized, _ = normalize_ohlcv(frame, timeframe=str(market["timeframe"]))
     strategy_frame = prepare_strategy_frame(normalized, cfg)

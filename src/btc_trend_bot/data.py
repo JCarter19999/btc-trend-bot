@@ -106,54 +106,159 @@ def download_ohlcv(
     start: str,
     max_bars: int,
 ) -> pd.DataFrame:
+    """
+    Download OHLCV candles through CCXT.
+
+    Coinbase does not expose native 4-hour candles through CCXT. When
+    Coinbase is requested with timeframe='4h', this function downloads
+    native 1-hour candles and resamples complete UTC-aligned groups into
+    4-hour candles.
+
+    Incomplete source groups and the currently forming final candle are
+    excluded.
+    """
     try:
         import ccxt
     except ImportError as exc:
-        raise RuntimeError("CCXT is not installed. Run: pip install -r requirements.txt") from exc
+        raise RuntimeError(
+            "CCXT is not installed. Run: pip install -r requirements.txt"
+        ) from exc
 
     if not hasattr(ccxt, exchange_id):
         raise ValueError(f"Unknown CCXT exchange: {exchange_id}")
 
+    if max_bars <= 0:
+        raise ValueError("max_bars must be positive.")
+
     exchange_class: Any = getattr(ccxt, exchange_id)
     exchange = exchange_class({"enableRateLimit": True})
+
     if not exchange.has.get("fetchOHLCV"):
-        raise RuntimeError(f"{exchange_id} does not report fetchOHLCV support through CCXT.")
+        raise RuntimeError(
+            f"{exchange_id} does not report fetchOHLCV support through CCXT."
+        )
 
     exchange.load_markets()
+
     if symbol not in exchange.markets:
         examples = list(exchange.markets)[:10]
-        raise ValueError(f"Symbol {symbol!r} not found on {exchange_id}. Examples: {examples}")
+        raise ValueError(
+            f"Symbol {symbol!r} not found on {exchange_id}. "
+            f"Examples: {examples}"
+        )
 
     since = exchange.parse8601(start)
     if since is None:
         raise ValueError(f"Could not parse market.start: {start}")
 
+    resample_coinbase_4h = exchange_id == "coinbase" and timeframe == "4h"
+
+    source_timeframe = "1h" if resample_coinbase_4h else timeframe
+    source_bars_per_output = 4 if resample_coinbase_4h else 1
+    source_max_bars = (
+        max_bars * source_bars_per_output + source_bars_per_output
+    )
+
     rows: list[list[float]] = []
     last_seen: int | None = None
-    while len(rows) < max_bars:
-        limit = min(720, max_bars - len(rows))
-        batch = exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
+    source_step_ms = int(
+        timeframe_to_timedelta(source_timeframe).total_seconds() * 1000
+    )
+
+    while len(rows) < source_max_bars:
+        limit = min(300, source_max_bars - len(rows))
+
+        batch = exchange.fetch_ohlcv(
+            symbol,
+            timeframe=source_timeframe,
+            since=since,
+            limit=limit,
+        )
+
         if not batch:
             break
+
         rows.extend(batch)
+
         newest = int(batch[-1][0])
         if last_seen is not None and newest <= last_seen:
             break
+
         last_seen = newest
         since = newest + 1
-        step_ms = int(timeframe_to_timedelta(timeframe).total_seconds() * 1000)
+
         now_ms = int(pd.Timestamp.now(tz="UTC").timestamp() * 1000)
-        if newest + step_ms >= now_ms:
+        if newest + source_step_ms >= now_ms:
             break
 
     if not rows:
         raise RuntimeError("No OHLCV rows were downloaded.")
 
     frame = pd.DataFrame(rows, columns=REQUIRED_COLUMNS)
-    frame["timestamp"] = pd.to_datetime(frame["timestamp"], unit="ms", utc=True)
-    frame = frame.drop_duplicates("timestamp", keep="last").sort_values("timestamp")
-    frame = drop_incomplete_last_bar(frame, timeframe=timeframe)
-    return frame.reset_index(drop=True)
+    frame["timestamp"] = pd.to_datetime(
+        frame["timestamp"],
+        unit="ms",
+        utc=True,
+    )
+
+    frame = (
+        frame.drop_duplicates("timestamp", keep="last")
+        .sort_values("timestamp")
+        .reset_index(drop=True)
+    )
+
+    frame = drop_incomplete_last_bar(
+        frame,
+        timeframe=source_timeframe,
+    )
+
+    if resample_coinbase_4h:
+        indexed = frame.set_index("timestamp")
+
+        grouped = indexed.resample(
+            "4h",
+            origin="epoch",
+            label="left",
+            closed="left",
+        )
+
+        resampled = grouped.agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+
+        source_counts = grouped["close"].count()
+        resampled = resampled.loc[source_counts == 4]
+
+        resampled = resampled.dropna(
+            subset=["open", "high", "low", "close", "volume"]
+        )
+
+        frame = resampled.reset_index()
+
+        frame = drop_incomplete_last_bar(
+            frame,
+            timeframe="4h",
+        )
+
+    frame = (
+        frame.drop_duplicates("timestamp", keep="last")
+        .sort_values("timestamp")
+        .tail(max_bars)
+        .reset_index(drop=True)
+    )
+
+    if frame.empty:
+        raise RuntimeError(
+            f"No complete {timeframe} OHLCV candles were produced."
+        )
+
+    return frame
 
 
 def save_ohlcv(frame: pd.DataFrame, path: str | Path) -> Path:
