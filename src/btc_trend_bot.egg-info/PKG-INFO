@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: btc-trend-bot
-Version: 0.1.0
+Version: 1.0.0
 Summary: Research-first Bitcoin trend backtester and local paper bot
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
@@ -10,6 +10,7 @@ Requires-Dist: pandas<3,>=2.2
 Requires-Dist: PyYAML<7,>=6.0
 Requires-Dist: matplotlib<4,>=3.8
 Requires-Dist: ccxt<5,>=4.4
+Requires-Dist: coinbase-advanced-py<2,>=1.8
 Dynamic: license-file
 
 # BTC Trend Bot
@@ -107,3 +108,47 @@ A positive total return alone is not evidence of skill. Review drawdown, turnove
 ## Important limitation
 
 This repository is a research and paper-trading scaffold, not financial advice and not a production trading system. Public candle APIs can contain gaps or revisions. Paper fills are approximations. Do not connect real capital without independent review, exchange-specific margin modeling, reconciliation, monitoring, and kill switches.
+
+## Continuous historical BTC-USD data
+
+Kraken's recent OHLC endpoint cannot bridge the seam between a stale archive
+and its rolling recent window. Version 0.3.0 can instead download paginated
+Coinbase Exchange one-hour candles and resample complete groups into UTC-aligned
+four-hour bars:
+
+```powershell
+python -m btc_trend_bot.cli download-coinbase-history
+python -m btc_trend_bot.cli diagnose-gaps --data data/btc_usd_4h_coinbase.csv
+python -m btc_trend_bot.cli backtest --data data/btc_usd_4h_coinbase.csv
+```
+
+See `DATA_REPAIR.md` for the complete workflow and data-quality gates.
+
+## Research diagnostics (v0.4)
+
+Each backtest now also writes `trades.csv` and `yearly_performance.csv`. The metrics JSON and console report include separate bootstrap tests, trade concentration, and market-capture diagnostics. See `ADDITIONAL_TESTS.md` for the frozen long/flat control and mirrored long/short experiment.
+
+## Final short-overlay validation
+
+Version 0.6.0 adds a frozen validation command for Variant B. It compares the selective short overlay directly with the no-breaker long/flat control using a paired moving-block bootstrap, 1x/2x/3x/5x execution-cost stress, calendar-year held-out scoring, and an optional second-exchange replication file.
+
+```powershell
+python -m btc_trend_bot.cli `
+  validate-short-overlay `
+  --control-config config/settings_no_breaker.yaml `
+  --candidate-config config/settings_short_b_regime.yaml `
+  --data data\btc_usd_4h_coinbase.csv
+```
+
+Optional replication:
+
+```powershell
+python -m btc_trend_bot.cli `
+  validate-short-overlay `
+  --control-config config/settings_no_breaker.yaml `
+  --candidate-config config/settings_short_b_regime.yaml `
+  --data data\btc_usd_4h_coinbase.csv `
+  --replication-data data\btc_usd_4h_second_exchange.csv
+```
+
+Outputs are written under `outputs/validation/`.

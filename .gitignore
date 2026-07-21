@@ -20,3 +20,6 @@ Thumbs.db
 Kraken_OHLCVT*.zip
 data/raw/
 data/*.zip
+
+runtime/
+.env

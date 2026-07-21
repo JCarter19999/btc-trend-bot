@@ -18,6 +18,7 @@ from btc_trend_bot.data import (
 from btc_trend_bot.gaps import build_gap_report
 from btc_trend_bot.kraken_archive import load_kraken_ohlcvt_archive
 from btc_trend_bot.paper import run_paper_step
+from btc_trend_bot.production import deployment_status, run_deployment_step, set_halt
 from btc_trend_bot.pipeline import print_metrics, run_research, save_outputs
 from btc_trend_bot.synthetic import generate_synthetic_ohlcv
 from btc_trend_bot.validation import validate_short_overlay
@@ -295,7 +296,12 @@ def main() -> None:
         help="Bypass the data-quality gate for diagnostic runs only",
     )
     subparsers.add_parser("demo", help="Run against generated synthetic data")
-    subparsers.add_parser("paper-step", help="Advance the local paper account once")
+    subparsers.add_parser("paper-step", help="Advance the legacy local paper account once")
+    subparsers.add_parser("deploy-step", help="Run one idempotent production dry-run/live decision cycle")
+    subparsers.add_parser("deploy-status", help="Show production halt and last-bar state")
+    halt = subparsers.add_parser("deploy-halt", help="Set the persistent production kill switch")
+    halt.add_argument("--reason", default="manual operator halt")
+    subparsers.add_parser("deploy-resume", help="Clear the persistent production kill switch")
 
     args = parser.parse_args()
     Path("data").mkdir(exist_ok=True)
@@ -329,6 +335,18 @@ def main() -> None:
         command_demo(args.config)
     elif args.command == "paper-step":
         run_paper_step(args.config)
+    elif args.command == "deploy-step":
+        decision = run_deployment_step(args.config)
+        print(decision)
+    elif args.command == "deploy-status":
+        for key, value in deployment_status(args.config).items():
+            print(f"{key}: {value}")
+    elif args.command == "deploy-halt":
+        set_halt(args.config, True, args.reason)
+        print("Deployment halted.")
+    elif args.command == "deploy-resume":
+        set_halt(args.config, False)
+        print("Deployment resumed.")
 
 
 if __name__ == "__main__":

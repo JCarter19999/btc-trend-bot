@@ -68,3 +68,14 @@
 - Added frozen calendar-year validation slices while preserving prior indicator history.
 - Added optional cross-exchange replication using a second normalized OHLCV CSV.
 - Added `validate-short-overlay` CLI command and machine-readable validation outputs.
+
+## 1.0.0
+
+- Added Coinbase Advanced Trade execution adapter using the official Python SDK.
+- Added deterministic client order IDs and duplicate-order protection.
+- Added SQLite audit/state store, persistent kill switch, and overlap lock.
+- Added dry-run/live deployment modes with a second live-trading acknowledgment gate.
+- Added balance reconciliation and fail-closed behavior after rejected or unreconciled orders.
+- Added webhook alerts, Docker packaging, systemd timer units, and production configuration.
+- Added production decision tests; full suite now contains 33 passing tests.
+- Frozen production strategy remains fixed-size long/cash with no permanent drawdown breaker.

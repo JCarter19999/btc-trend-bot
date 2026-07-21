@@ -1,0 +1,12 @@
+[Unit]
+Description=Run BTC Trend Bot after each 4-hour UTC candle closes
+
+[Timer]
+# 00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC
+OnCalendar=*-*-* 00,04,08,12,16,20:05:00 UTC
+Persistent=true
+RandomizedDelaySec=20
+Unit=btc-trend-bot.service
+
+[Install]
+WantedBy=timers.target

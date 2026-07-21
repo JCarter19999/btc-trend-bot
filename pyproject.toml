@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "btc-trend-bot"
-version = "0.6.0"
+version = "1.0.0"
 description = "Research-first Bitcoin trend backtester and local paper bot"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,6 +14,7 @@ dependencies = [
   "PyYAML>=6.0,<7",
   "matplotlib>=3.8,<4",
   "ccxt>=4.4,<5",
+  "coinbase-advanced-py>=1.8,<2",
 ]
 
 [project.scripts]

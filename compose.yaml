@@ -1,0 +1,10 @@
+services:
+  btc-trend-bot:
+    build: .
+    image: btc-trend-bot:1.0.0
+    env_file: .env
+    volumes:
+      - ./runtime:/app/runtime
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    restart: "no"
