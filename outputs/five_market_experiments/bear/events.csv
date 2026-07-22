@@ -1,0 +1,8 @@
+event_index,candidate_bar,quality,target_planted,resolution_delay_bars
+0,500,1,1,2
+6,1820,1,1,36
+48,11060,1,1,180
+113,25360,1,1,8
+279,61880,0,0,2
+310,68700,1,1,2
+325,72000,1,1,36

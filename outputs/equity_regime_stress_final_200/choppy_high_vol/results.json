@@ -1,0 +1,68 @@
+{
+  "configuration": {
+    "sessions": 120,
+    "seed": 12017,
+    "initial_capital": 2500.0,
+    "monthly_deposit": 0.0,
+    "option_budget_fraction": 0.3,
+    "return_threshold_bps": 5.0,
+    "output": "outputs/equity_regime_stress_final_200/choppy_high_vol",
+    "scenarios": "choppy_high_vol"
+  },
+  "safety": {
+    "drawdown_pause": 0.15,
+    "hard_shutdown_drawdown": 0.35,
+    "consecutive_loss_limit": 4,
+    "cooldown_trades": 8,
+    "option_loss_limit": 2,
+    "option_pause_trades": 10,
+    "minimum_equity": 25.0,
+    "require_positive_trend": true
+  },
+  "results": [
+    {
+      "initial_capital": 2500.0,
+      "monthly_deposit": 0.0,
+      "safety_enabled": false,
+      "ending_equity": 2500.0,
+      "total_contributed": 2500.0,
+      "net_profit": 0.0,
+      "return_on_contributed_capital": 0.0,
+      "max_drawdown": 0.0,
+      "candidate_trades": 15,
+      "trades_taken": 15,
+      "trades_skipped_by_safety": 0,
+      "option_contracts": 0,
+      "hard_stopped": false,
+      "minimum_equity": 2500.0,
+      "loss_trade_rate": 0.0,
+      "scenario": "choppy_high_vol",
+      "route": "unprotected",
+      "selected_stock_trades": 15,
+      "overlay_eligible": 0,
+      "mean_stock_return": 0.0029465582952413294
+    },
+    {
+      "initial_capital": 2500.0,
+      "monthly_deposit": 0.0,
+      "safety_enabled": true,
+      "ending_equity": 2500.0,
+      "total_contributed": 2500.0,
+      "net_profit": 0.0,
+      "return_on_contributed_capital": 0.0,
+      "max_drawdown": 0.0,
+      "candidate_trades": 15,
+      "trades_taken": 12,
+      "trades_skipped_by_safety": 3,
+      "option_contracts": 0,
+      "hard_stopped": false,
+      "minimum_equity": 2500.0,
+      "loss_trade_rate": 0.0,
+      "scenario": "choppy_high_vol",
+      "route": "protected",
+      "selected_stock_trades": 15,
+      "overlay_eligible": 0,
+      "mean_stock_return": 0.0029465582952413294
+    }
+  ]
+}

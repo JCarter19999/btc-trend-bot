@@ -1,0 +1,116 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+features:
+  ema_fast_5m: 9
+  ema_slow_5m: 21
+  m15_atr_period: 20
+  m15_adx_period: 14
+  m15_ema_fast: 20
+  m15_ema_slow: 50
+  m15_donchian_entry: 24
+  m15_donchian_exit: 12
+  m30_atr_period: 20
+  m30_adx_period: 14
+  m30_ema_fast: 20
+  m30_ema_slow: 50
+  m30_donchian_entry: 24
+  m30_donchian_exit: 12
+  h1_atr_period: 20
+  h1_adx_period: 14
+  h1_ema_fast: 20
+  h1_ema_slow: 50
+  h4_atr_period: 20
+  h4_adx_period: 14
+  h4_ema_fast: 20
+  h4_ema_slow: 50
+  d1_ema_fast: 10
+  d1_ema_slow: 30
+  d1_momentum_days: 5
+  volatility_median_bars_15m: 96
+costs:
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+research:
+  initial_cash: 500.0
+  seed: 42
+  trials: 120
+  validation_candidates: 24
+  test_candidates: 6
+  split_ratios: [0.60, 0.20, 0.20]
+  objective:
+    break_even_weight: 1.0
+    average_gross_weight: 0.20
+    net_return_weight: 25.0
+    drawdown_weight: 15.0
+    minimum_trades: 8
+    missing_trade_penalty: 1.25
+    maximum_best_five_share: 0.70
+    concentration_penalty: 5.0
+entry_template:
+  signal_source: 15m
+  entry_rsi: 3
+  recovery_ticks: 2
+  min_h4_trend_bps: 25
+  min_d1_trend_bps: 0
+  min_d1_momentum_bps: -75
+  min_atr_ratio: 0.75
+  max_atr_ratio: 1.5
+  expected_move_atr_multiple: 1.75
+  cost_hurdle_multiple: 1.5
+  cooldown_bars_5m: 96
+  setup_expiry_bars_5m: 96
+  minimum_hold_bars_5m: 0
+  maximum_hold_bars_5m: 144
+  exit_h4_trend_bps: -25
+  exit_d1_momentum_bps: -250
+
+# Immutable v0.9 state goal.  This is always evaluated on train, validation,
+# test, and full data even if none of the sampled candidates beat it.
+baseline:
+  id: original_goal_time144_t25_s65
+  type: exit_variant
+  exit_mode: time_capture
+  target_bps: 25
+  stop_bps: 65
+  minimum_hold_bars_5m: 0
+  maximum_hold_bars_5m: 144
+
+# Deliberately constrained neighborhood around the v0.9 winner. Random search
+# avoids an expensive full Cartesian grid while still examining interactions.
+search_space:
+  exit_mode:
+    type: choice
+    values: [time_capture, breakeven_lock, activated_trailing]
+  target_bps:
+    type: int
+    low: 20
+    high: 40
+    step: 5
+  stop_bps:
+    type: int
+    low: 50
+    high: 85
+    step: 5
+  maximum_hold_bars_5m:
+    type: choice
+    values: [72, 96, 120, 144, 192]
+  minimum_hold_bars_5m:
+    type: choice
+    values: [0, 6, 12]
+  lock_activation_bps:
+    type: choice
+    values: [15, 20, 25, 30]
+  lock_bps:
+    type: choice
+    values: [-5, 0, 5, 10]
+  activation_bps:
+    type: choice
+    values: [15, 20, 25, 30, 35]
+  trail_bps:
+    type: choice
+    values: [8, 10, 12, 15, 20]

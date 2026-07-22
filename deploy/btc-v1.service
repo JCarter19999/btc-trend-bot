@@ -1,0 +1,15 @@
+[Unit]
+Description=BTC Binance v1 paper platform
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/btc-trend-bot
+ExecStart=/usr/bin/docker compose -f compose.v1.yaml up -d
+ExecStop=/usr/bin/docker compose -f compose.v1.yaml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

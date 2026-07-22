@@ -1,0 +1,41 @@
+{
+  "best_configuration": {
+    "hold": "2_sessions",
+    "feature_set": "geometry",
+    "model_kind": "ridge",
+    "threshold_bps": 5.0,
+    "folds": 4,
+    "positive_folds": 4,
+    "total_selected_trades": 574,
+    "mean_selected_expectancy_bps": 44.94883371873557,
+    "median_selected_expectancy_bps": 43.57239924192901,
+    "mean_portfolio_return": 0.8621189680237661,
+    "compounded_fold_return": 9.09868484941327,
+    "worst_fold_return": 0.1549643932423337,
+    "max_fold_drawdown": 0.20110873852455624,
+    "mean_test_r2": 0.009530101591493922,
+    "gap_stop_count": 15
+  },
+  "benchmarks": [
+    {
+      "benchmark": "AAPL_buy_hold",
+      "return": 0.3453073047738395,
+      "max_drawdown": 0.4365750281982296
+    },
+    {
+      "benchmark": "TSLA_buy_hold",
+      "return": 4.787010196952846,
+      "max_drawdown": 0.570366978688025
+    },
+    {
+      "benchmark": "MSFT_buy_hold",
+      "return": 0.44103136349402167,
+      "max_drawdown": 0.47991954748135485
+    },
+    {
+      "benchmark": "equal_weight_buy_hold",
+      "return": 1.8577829550735694,
+      "max_drawdown": 0.3449827733401999
+    }
+  ]
+}

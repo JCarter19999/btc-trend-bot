@@ -1,0 +1,68 @@
+{
+  "configuration": {
+    "sessions": 120,
+    "seed": 12017,
+    "initial_capital": 2500.0,
+    "monthly_deposit": 0.0,
+    "option_budget_fraction": 0.3,
+    "return_threshold_bps": 5.0,
+    "output": "outputs/equity_regime_stress_final_200/crash_recovery",
+    "scenarios": "crash_recovery"
+  },
+  "safety": {
+    "drawdown_pause": 0.15,
+    "hard_shutdown_drawdown": 0.35,
+    "consecutive_loss_limit": 4,
+    "cooldown_trades": 8,
+    "option_loss_limit": 2,
+    "option_pause_trades": 10,
+    "minimum_equity": 25.0,
+    "require_positive_trend": true
+  },
+  "results": [
+    {
+      "initial_capital": 2500.0,
+      "monthly_deposit": 0.0,
+      "safety_enabled": false,
+      "ending_equity": 2482.033209282688,
+      "total_contributed": 2500.0,
+      "net_profit": -17.96679071731205,
+      "return_on_contributed_capital": -0.007186716286924821,
+      "max_drawdown": 0.054932898526223295,
+      "candidate_trades": 30,
+      "trades_taken": 30,
+      "trades_skipped_by_safety": 0,
+      "option_contracts": 1,
+      "hard_stopped": false,
+      "minimum_equity": 2362.667753684442,
+      "loss_trade_rate": 0.3333333333333333,
+      "scenario": "crash_recovery",
+      "route": "unprotected",
+      "selected_stock_trades": 30,
+      "overlay_eligible": 2,
+      "mean_stock_return": 0.0032751708835624727
+    },
+    {
+      "initial_capital": 2500.0,
+      "monthly_deposit": 0.0,
+      "safety_enabled": true,
+      "ending_equity": 2504.9072714879067,
+      "total_contributed": 2500.0,
+      "net_profit": 4.907271487906655,
+      "return_on_contributed_capital": 0.001962908595162662,
+      "max_drawdown": 0.054554720414389135,
+      "candidate_trades": 30,
+      "trades_taken": 27,
+      "trades_skipped_by_safety": 3,
+      "option_contracts": 1,
+      "hard_stopped": false,
+      "minimum_equity": 2363.613198964027,
+      "loss_trade_rate": 0.25925925925925924,
+      "scenario": "crash_recovery",
+      "route": "protected",
+      "selected_stock_trades": 30,
+      "overlay_eligible": 2,
+      "mean_stock_return": 0.0032751708835624727
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+system:
+  strategy_version: selective_long_5m_v1
+  symbol: BTCUSDT
+  interval: 5m
+  context_interval: 15m
+  timezone: UTC
+  starting_equity_usdt: 500.0
+exchange:
+  base_url: https://api.binance.com
+  testnet_base_url: https://testnet.binance.vision
+  recv_window_ms: 5000
+strategy:
+  entry_run_bars: 3
+  min_run_return_bps: 15.0
+  min_relative_volume: 1.0
+  min_body_fraction: 0.45
+  broader_trend_ema_bars: 72
+  regime_fast_ema_bars: 12
+  regime_slow_ema_bars: 72
+  momentum_bars: 12
+  entry_regime_spread_bps: 20.0
+  entry_momentum_bps: 30.0
+  atr_bars: 14
+exit:
+  stop_atr_multiple: 1.5
+  target_atr_multiple: 2.5
+  max_hold_bars: 144
+  time_exit_enabled: true
+  collision_policy: stop_first
+  adaptive:
+    breakeven_enabled: true
+    breakeven_trigger_atr: 1.0
+    breakeven_offset_bps: 2.0
+    trailing_enabled: true
+    trailing_activation_atr: 1.5
+    trailing_distance_atr: 1.0
+    chandelier_lookback_bars: 24
+    momentum_exit_enabled: true
+    momentum_lookback_bars: 6
+    momentum_exit_bps: -12.0
+    trend_exit_enabled: true
+    trend_fast_bars: 6
+    trend_slow_bars: 18
+    volatility_exit_enabled: true
+    volatility_range_atr: 3.5
+    min_hold_before_soft_exit_bars: 3
+    volatility_adaptive_enabled: true
+    volatility_lookback_bars: 12
+    volatility_factor_min: 1.0
+    volatility_factor_max: 2.5
+    volatility_reference_atr: 1.0
+    volatility_atr_pct_reference: 0.0015
+    trailing_volatility_exponent: 0.8
+    soft_exit_delay_volatility_exponent: 1.0
+    momentum_volatility_exponent: 0.8
+costs:
+  fee_bps_per_side: 10.0
+  spread_bps_per_side: 2.0
+  slippage_bps_per_side: 2.0
+  latency_bps_round_trip: 1.0
+model:
+  safety_margin_bps: 5.0
+  feature_schema_version: trade_features_v1
+  champion_dir: models/champion
+risk:
+  max_allocation_fraction: 0.10
+  max_btc_exposure_fraction: 0.10
+  max_open_positions: 1
+  daily_loss_fraction: 0.03
+  weekly_loss_fraction: 0.08
+  max_drawdown_fraction: 0.15
+  max_trades_per_day: 10
+  max_consecutive_losses: 5
+  max_spread_bps: 10.0
+  max_stale_candles: 2
+  max_clock_drift_seconds: 5.0
+retraining:
+  weekday_utc: 6
+  minimum_new_matured_candidates: 50
+storage:
+  sqlite_path: runtime/v1.sqlite3
+  parquet_root: data/parquet
+  model_root: models

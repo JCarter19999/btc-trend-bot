@@ -79,3 +79,6 @@
 - Added webhook alerts, Docker packaging, systemd timer units, and production configuration.
 - Added production decision tests; full suite now contains 33 passing tests.
 - Frozen production strategy remains fixed-size long/cash with no permanent drawdown breaker.
+
+## v2.6.0
+Added the regime-triggered extreme-bull long-call overlay experiment and probability-of-ruin comparison.

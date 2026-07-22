@@ -1,0 +1,92 @@
+{
+  "models": [
+    {
+      "feature_set": "baseline",
+      "model_kind": "ridge",
+      "train_candidates": 1471,
+      "calibration_candidates": 485,
+      "test_candidates": 493,
+      "selected_trades": 82,
+      "selection_rate": 0.18807339449541285,
+      "test_mae_bps": 98.64482585741504,
+      "test_r2": -0.0410532046135228,
+      "all_test_expectancy_bps": 28.150495956005482,
+      "selected_expectancy_bps": 69.82706239234426,
+      "selected_win_rate": 0.573170731707317,
+      "portfolio_return": 0.7538552635478701,
+      "max_drawdown": 0.04015792737380353,
+      "median_hold_bars": 4.0,
+      "symbol_counts": {
+        "AAPL": 38,
+        "MSFT": 23,
+        "TSLA": 21
+      }
+    },
+    {
+      "feature_set": "continuous_geometry",
+      "model_kind": "ridge",
+      "train_candidates": 1471,
+      "calibration_candidates": 485,
+      "test_candidates": 493,
+      "selected_trades": 91,
+      "selection_rate": 0.20871559633027523,
+      "test_mae_bps": 98.17890944373235,
+      "test_r2": -0.021647786586620033,
+      "all_test_expectancy_bps": 28.150495956005482,
+      "selected_expectancy_bps": 57.14506468179449,
+      "selected_win_rate": 0.5164835164835165,
+      "portfolio_return": 0.6645103551655369,
+      "max_drawdown": 0.040254018142796215,
+      "median_hold_bars": 5.0,
+      "symbol_counts": {
+        "AAPL": 41,
+        "TSLA": 25,
+        "MSFT": 25
+      }
+    },
+    {
+      "feature_set": "continuous_geometry",
+      "model_kind": "tree",
+      "train_candidates": 1471,
+      "calibration_candidates": 485,
+      "test_candidates": 493,
+      "selected_trades": 144,
+      "selection_rate": 0.3302752293577982,
+      "test_mae_bps": 95.6788143704023,
+      "test_r2": 0.04891972766168429,
+      "all_test_expectancy_bps": 28.150495956005482,
+      "selected_expectancy_bps": 37.484316704696425,
+      "selected_win_rate": 0.4722222222222222,
+      "portfolio_return": 0.693179067535435,
+      "max_drawdown": 0.056355720329385975,
+      "median_hold_bars": 4.0,
+      "symbol_counts": {
+        "AAPL": 66,
+        "MSFT": 45,
+        "TSLA": 33
+      }
+    }
+  ],
+  "benchmarks": [
+    {
+      "benchmark": "AAPL_buy_hold",
+      "return": 0.9170825921549585,
+      "max_drawdown": 0.2695883394450565
+    },
+    {
+      "benchmark": "TSLA_buy_hold",
+      "return": 0.047250085940391415,
+      "max_drawdown": 0.5354474403148166
+    },
+    {
+      "benchmark": "MSFT_buy_hold",
+      "return": 0.10795219778546931,
+      "max_drawdown": 0.355406993672407
+    },
+    {
+      "benchmark": "equal_weight_buy_hold",
+      "return": 0.3574282919602731,
+      "max_drawdown": 0.23714253440428573
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "configuration": {
+    "sessions": 400,
+    "seed": 9381,
+    "return_threshold_bps": 5.0,
+    "rank_threshold": 0.55,
+    "ruin_simulations": 5000,
+    "output": "outputs/equity_extreme_bull_overlay_final"
+  },
+  "regime_summary": {
+    "selected_stock_trades": 123,
+    "extreme_bull_signals": 12,
+    "option_overlay_eligible": 2,
+    "overlay_eligibility_rate": 0.016260162601626018,
+    "eligible_mean_stock_return": 0.022008187959238354,
+    "eligible_mean_option_return": 0.1430965201286581,
+    "eligible_option_win_rate": 0.5,
+    "eligible_symbols": {
+      "TSLA": 1,
+      "AAPL": 1
+    },
+    "eligible_folds": {
+      "1": 1,
+      "2": 1
+    }
+  },
+  "strategy_summary": [
+    {
+      "strategy": "extreme_bull_tiered",
+      "trades": 123,
+      "mean_trade_return": 0.005816318626043119,
+      "compounded_return": 0.9734025540793658,
+      "max_drawdown": 0.13027833478485398,
+      "simulations": 5000,
+      "p_equity_below_50pct": 0.0002,
+      "p_equity_below_25pct": 0.0,
+      "p_equity_below_10pct": 0.0,
+      "p_final_loss": 0.0606,
+      "median_final_equity": 1.5848012383546088,
+      "p05_final_equity": 0.9771941311933716,
+      "median_max_drawdown": 0.16358775336807047,
+      "p95_max_drawdown": 0.3098470969470124
+    },
+    {
+      "strategy": "extreme_bull_fixed_30",
+      "trades": 123,
+      "mean_trade_return": 0.005737779006314567,
+      "compounded_return": 0.9540687968446231,
+      "max_drawdown": 0.1387991444403933,
+      "simulations": 5000,
+      "p_equity_below_50pct": 0.0014,
+      "p_equity_below_25pct": 0.0002,
+      "p_equity_below_10pct": 0.0,
+      "p_final_loss": 0.0614,
+      "median_final_equity": 1.5525710984191279,
+      "p05_final_equity": 0.9685473795728977,
+      "median_max_drawdown": 0.16443244387004924,
+      "p95_max_drawdown": 0.3167265581550484
+    },
+    {
+      "strategy": "extreme_bull_fixed_20",
+      "trades": 123,
+      "mean_trade_return": 0.0055408874092911205,
+      "compounded_return": 0.914074316266198,
+      "max_drawdown": 0.13311860467003384,
+      "simulations": 5000,
+      "p_equity_below_50pct": 0.0002,
+      "p_equity_below_25pct": 0.0,
+      "p_equity_below_10pct": 0.0,
+      "p_final_loss": 0.0728,
+      "median_final_equity": 1.5263599470358393,
+      "p05_final_equity": 0.9426264429924814,
+      "median_max_drawdown": 0.1665071684704458,
+      "p95_max_drawdown": 0.31645036073737914
+    },
+    {
+      "strategy": "extreme_bull_fixed_10",
+      "trades": 123,
+      "mean_trade_return": 0.005343995812267674,
+      "compounded_return": 0.8733867588945825,
+      "max_drawdown": 0.12743806489967419,
+      "simulations": 5000,
+      "p_equity_below_50pct": 0.0,
+      "p_equity_below_25pct": 0.0,
+      "p_equity_below_10pct": 0.0,
+      "p_final_loss": 0.0692,
+      "median_final_equity": 1.4968397998818155,
+      "p05_final_equity": 0.9598431254611055,
+      "median_max_drawdown": 0.16487897093397974,
+      "p95_max_drawdown": 0.30820557560513934
+    },
+    {
+      "strategy": "stock_only",
+      "trades": 123,
+      "mean_trade_return": 0.005147104215244226,
+      "compounded_return": 0.8320061247297763,
+      "max_drawdown": 0.121757525129315,
+      "simulations": 5000,
+      "p_equity_below_50pct": 0.0002,
+      "p_equity_below_25pct": 0.0,
+      "p_equity_below_10pct": 0.0,
+      "p_final_loss": 0.0746,
+      "median_final_equity": 1.4676479505657376,
+      "p05_final_equity": 0.9441343446268093,
+      "median_max_drawdown": 0.16492044587025367,
+      "p95_max_drawdown": 0.31831236776961946
+    }
+  ]
+}

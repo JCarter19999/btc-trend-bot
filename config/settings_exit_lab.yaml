@@ -1,0 +1,147 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+features:
+  ema_fast_5m: 9
+  ema_slow_5m: 21
+  m15_atr_period: 20
+  m15_adx_period: 14
+  m15_ema_fast: 20
+  m15_ema_slow: 50
+  m15_donchian_entry: 24
+  m15_donchian_exit: 12
+  m30_atr_period: 20
+  m30_adx_period: 14
+  m30_ema_fast: 20
+  m30_ema_slow: 50
+  m30_donchian_entry: 24
+  m30_donchian_exit: 12
+  h1_atr_period: 20
+  h1_adx_period: 14
+  h1_ema_fast: 20
+  h1_ema_slow: 50
+  h4_atr_period: 20
+  h4_adx_period: 14
+  h4_ema_fast: 20
+  h4_ema_slow: 50
+  d1_ema_fast: 10
+  d1_ema_slow: 30
+  d1_momentum_days: 5
+  volatility_median_bars_15m: 96
+costs:
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+research:
+  initial_cash: 500.0
+  cost_sensitivity_all_in_bps_per_side: [3, 5, 8, 10, 12]
+  chronological_folds: 5
+  fold_history_rows: 1000
+entry_template:
+  signal_source: 15m
+  entry_rsi: 3
+  recovery_ticks: 2
+  min_h4_trend_bps: 25
+  min_d1_trend_bps: 0
+  min_d1_momentum_bps: -75
+  min_atr_ratio: 0.75
+  max_atr_ratio: 1.5
+  expected_move_atr_multiple: 1.75
+  cost_hurdle_multiple: 1.5
+  cooldown_bars_5m: 96
+  setup_expiry_bars_5m: 96
+  minimum_hold_bars_5m: 24
+  maximum_hold_bars_5m: 288
+  exit_h4_trend_bps: -25
+  exit_d1_momentum_bps: -250
+strategies:
+  - id: cash_5m
+    type: cash
+  - id: buy_hold_5m
+    type: buy_hold
+  - id: exit_control
+    type: exit_variant
+    exit_mode: control
+    exit_rsi: 80
+    trailing_stop_atr: 3.25
+  - id: fixed_t20_s35
+    type: exit_variant
+    exit_mode: fixed_target
+    target_bps: 20
+    stop_bps: 35
+    maximum_hold_bars_5m: 72
+  - id: fixed_t30_s50
+    type: exit_variant
+    exit_mode: fixed_target
+    target_bps: 30
+    stop_bps: 50
+    maximum_hold_bars_5m: 96
+  - id: fixed_t40_s65
+    type: exit_variant
+    exit_mode: fixed_target
+    target_bps: 40
+    stop_bps: 65
+    maximum_hold_bars_5m: 144
+  - id: trail_a15_d10
+    type: exit_variant
+    exit_mode: activated_trailing
+    activation_bps: 15
+    trail_bps: 10
+    stop_bps: 50
+    maximum_hold_bars_5m: 96
+  - id: trail_a25_d15
+    type: exit_variant
+    exit_mode: activated_trailing
+    activation_bps: 25
+    trail_bps: 15
+    stop_bps: 50
+    maximum_hold_bars_5m: 120
+  - id: trail_a35_d20
+    type: exit_variant
+    exit_mode: activated_trailing
+    activation_bps: 35
+    trail_bps: 20
+    stop_bps: 65
+    maximum_hold_bars_5m: 144
+  - id: rsi70_hold12
+    type: exit_variant
+    exit_mode: rsi_recovery
+    exit_rsi: 70
+    minimum_hold_bars_5m: 12
+    stop_bps: 50
+    maximum_hold_bars_5m: 96
+  - id: rsi80_hold24
+    type: exit_variant
+    exit_mode: rsi_recovery
+    exit_rsi: 80
+    minimum_hold_bars_5m: 24
+    stop_bps: 50
+    maximum_hold_bars_5m: 120
+  - id: rsi90_hold36
+    type: exit_variant
+    exit_mode: rsi_recovery
+    exit_rsi: 90
+    minimum_hold_bars_5m: 36
+    stop_bps: 65
+    maximum_hold_bars_5m: 144
+  - id: time36_t25_s50
+    type: exit_variant
+    exit_mode: time_capture
+    target_bps: 25
+    stop_bps: 50
+    maximum_hold_bars_5m: 36
+  - id: time72_t25_s50
+    type: exit_variant
+    exit_mode: time_capture
+    target_bps: 25
+    stop_bps: 50
+    maximum_hold_bars_5m: 72
+  - id: time144_t25_s65
+    type: exit_variant
+    exit_mode: time_capture
+    target_bps: 25
+    stop_bps: 65
+    maximum_hold_bars_5m: 144

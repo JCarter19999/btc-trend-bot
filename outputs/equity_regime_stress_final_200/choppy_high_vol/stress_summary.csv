@@ -1,0 +1,3 @@
+initial_capital,monthly_deposit,safety_enabled,ending_equity,total_contributed,net_profit,return_on_contributed_capital,max_drawdown,candidate_trades,trades_taken,trades_skipped_by_safety,option_contracts,hard_stopped,minimum_equity,loss_trade_rate,scenario,route,selected_stock_trades,overlay_eligible,mean_stock_return
+2500.0,0.0,False,2500.0,2500.0,0.0,0.0,0.0,15,15,0,0,False,2500.0,0.0,choppy_high_vol,unprotected,15,0,0.0029465582952413294
+2500.0,0.0,True,2500.0,2500.0,0.0,0.0,0.0,15,12,3,0,False,2500.0,0.0,choppy_high_vol,protected,15,0,0.0029465582952413294
