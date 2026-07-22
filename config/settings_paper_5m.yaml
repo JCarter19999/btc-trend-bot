@@ -1,0 +1,94 @@
+market:
+  # Public market data only. No Coinbase credentials or order permissions are used.
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+
+features_5m:
+  # Five-minute candles remain the trigger, but the position is held through a
+  # slower 1-hour / 6-hour regime instead of flipping on every candle color.
+  doji_threshold_bps: 1.0
+  volume_window_bars: 48
+  broader_trend_ema_bars: 72
+  regime_fast_ema_bars: 12
+  regime_slow_ema_bars: 72
+  momentum_bars: 12
+  research_horizon_bars: [1, 3, 6, 12, 36, 72, 144, 288]
+
+paper_lab:
+  initial_cash: 500.0
+  lookback_bars: 600
+
+  # Coinbase Intro 1 shown by the account: 1.20% taker fee per side.
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+
+  # Historical candles do not include bid/ask. Live paper steps use the observed
+  # public ticker; historical research applies this explicit spread assumption.
+  assumed_spread_bps_per_side: 1.0
+
+  allocation_cap: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 2.0
+
+  state_db_path: runtime/paper_5m.sqlite3
+  lock_path: runtime/paper_5m.lock
+  outbox_path: runtime/paper_5m_supabase_outbox.jsonl
+  supabase_snapshot_every_bars: 3
+
+paper_strategies:
+  - id: cash_5m
+    type: cash
+
+  - id: buy_hold_5m
+    type: buy_hold
+
+  # Balanced candidate: a 5-minute two-candle trigger must agree with positive
+  # 1-hour momentum and a positive 1-hour/6-hour EMA regime. Exit requires two
+  # of three deterioration signals, preventing a single red run from churning.
+  - id: candle_swing_balanced_5m
+    type: candle_swing
+    entry_run_bars: 2
+    min_run_return_bps: 8.0
+    min_relative_volume: 0.80
+    min_body_fraction: 0.35
+    require_broader_uptrend: true
+    entry_regime_spread_bps: 10.0
+    entry_momentum_bps: 15.0
+    exit_run_bars: 2
+    exit_regime_spread_bps: -5.0
+    exit_momentum_bps: -20.0
+    exit_confirmations_required: 2
+
+  # Stricter candidate: enters only on a stronger three-candle impulse and
+  # requires all three exit confirmations. Expected to trade materially less.
+  - id: candle_swing_strict_5m
+    type: candle_swing
+    entry_run_bars: 3
+    min_run_return_bps: 15.0
+    min_relative_volume: 1.00
+    min_body_fraction: 0.45
+    require_broader_uptrend: true
+    entry_regime_spread_bps: 20.0
+    entry_momentum_bps: 30.0
+    exit_run_bars: 3
+    exit_regime_spread_bps: -10.0
+    exit_momentum_bps: -35.0
+    exit_confirmations_required: 3
+
+  # Middle ground: same entry as balanced, but an intentionally slow exit. This
+  # tests whether the five-minute signal is more useful for entry timing than for
+  # frequent exit timing.
+  - id: candle_swing_slow_exit_5m
+    type: candle_swing
+    entry_run_bars: 2
+    min_run_return_bps: 8.0
+    min_relative_volume: 0.80
+    min_body_fraction: 0.35
+    require_broader_uptrend: true
+    entry_regime_spread_bps: 10.0
+    entry_momentum_bps: 15.0
+    exit_run_bars: 3
+    exit_regime_spread_bps: -15.0
+    exit_momentum_bps: -40.0
+    exit_confirmations_required: 3

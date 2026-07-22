@@ -23,3 +23,12 @@ data/*.zip
 
 runtime/
 .env
+
+# Generated backtest outputs
+outputs/
+runtime/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/

@@ -1,0 +1,22 @@
+services:
+  btc-paper-5m:
+    build:
+      context: .
+      dockerfile: Dockerfile.paper-5m
+    image: btc-paper-5m:0.2.0
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      SUPABASE_PAPER_SNAPSHOT_TABLE: ${SUPABASE_PAPER_SNAPSHOT_TABLE:-paper_portfolio_snapshots}
+      SUPABASE_PAPER_TRADES_TABLE: ${SUPABASE_PAPER_TRADES_TABLE:-paper_trades}
+    volumes:
+      - ./runtime:/app/runtime
+      - ./outputs:/app/outputs
+    restart: "no"
+    command:
+      - python
+      - -m
+      - btc_trend_bot.paper_lab
+      - --config
+      - config/settings_paper_5m.yaml
+      - step
