@@ -5,6 +5,7 @@ end: null
 interval: 1d
 auto_adjust: true
 initial_capital: 2500.0
+position_fraction: 0.25  # fraction of equity committed to each trade; rest stays uninvested in cash
 return_threshold_bps: 10.0
 max_hold_bars: 10
 train_bars: 756

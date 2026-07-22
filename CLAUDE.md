@@ -122,11 +122,18 @@ geometry columns (from `btc_trend_bot.v1.candlestick_geometry`).
 
 symbols `[AAPL, MSFT, NVDA, TSLA]`, benchmark `SPY`, start `2018-01-01`,
 `interval: 1d`, `auto_adjust: true`, `initial_capital: 2500`,
-`return_threshold_bps: 10`, `max_hold_bars: 10`, `train_bars: 756`,
-`test_bars: 126`, `step_bars: 126`, `purge_bars: 10`, `ridge_alpha: 10`,
-`stop_atr: 1.35`, `target_atr: 2.15`, `slippage_bps_each_side: 2`. Safety:
-drawdown_pause 0.15, hard_shutdown_drawdown 0.35, consecutive_loss_limit 4,
-cooldown_trades 8, minimum_equity 25.
+`position_fraction: 0.25`, `return_threshold_bps: 10`, `max_hold_bars: 10`,
+`train_bars: 756`, `test_bars: 126`, `step_bars: 126`, `purge_bars: 10`,
+`ridge_alpha: 10`, `stop_atr: 1.35`, `target_atr: 2.15`,
+`slippage_bps_each_side: 2`. Safety: drawdown_pause 0.15,
+hard_shutdown_drawdown 0.35, consecutive_loss_limit 4, cooldown_trades 8,
+minimum_equity 25.
+
+`position_fraction` caps how much of current equity is committed as notional
+per sequential trade (rest sits in cash, earning nothing) — without it, one
+active position means 100% of equity on every trade, which compounds any
+structural edge (or pure noise, per the label-shuffle/random-selection
+controls) into wildly seed-dependent, unrealistic terminal equity.
 
 ## Non-negotiable guardrails
 
