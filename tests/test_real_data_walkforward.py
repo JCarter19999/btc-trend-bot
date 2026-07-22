@@ -59,6 +59,21 @@ def test_random_selection_is_reproducible_per_seed():
     _,trades_b=real.walk_forward(c,cfg,selection='random',seed=3)
     pd.testing.assert_frame_equal(trades_a.reset_index(drop=True),trades_b.reset_index(drop=True))
 
+def test_single_split_forward_trains_once_tests_once():
+    cfg=config(); frames={'AAPL':frame(seed=1),'MSFT':frame(seed=2),'SPY':frame(seed=3)}
+    c=real.build_candidates(frames,'SPY',cfg); c.signal_time=pd.to_datetime(c.signal_time,utc=True)
+    folds,trades=real.single_split_forward(c,cfg,'2018-01-01','2019-12-31','2020-06-01','2021-12-31')
+    assert len(folds)==1
+    assert (trades.signal_time>=pd.Timestamp('2020-06-01',tz='UTC')).all()
+    assert (trades.signal_time<=pd.Timestamp('2021-12-31',tz='UTC')).all()
+    assert trades.groupby('signal_time').size().max()==1
+
+def test_single_split_forward_supports_selection_controls():
+    cfg=config(); frames={'AAPL':frame(seed=1),'MSFT':frame(seed=2),'SPY':frame(seed=3)}
+    c=real.build_candidates(frames,'SPY',cfg); c.signal_time=pd.to_datetime(c.signal_time,utc=True)
+    _,trades=real.single_split_forward(c,cfg,'2018-01-01','2019-12-31','2020-06-01','2021-12-31',selection='random')
+    assert trades.predicted_return.isna().all()
+
 def test_position_fraction_limits_notional_and_dampens_compounding():
     trades=pd.DataFrame({'signal_time':pd.bdate_range('2018-01-01',periods=3,tz='UTC'),
                           'symbol':['AAPL']*3,'predicted_return':[1.0]*3,'net_return':[0.5,0.5,0.5]})

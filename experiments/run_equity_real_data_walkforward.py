@@ -195,6 +195,40 @@ def build_candidates(frames: dict[str, pd.DataFrame], benchmark_symbol: str, cfg
 SELECTION_MODES = ("ridge", "random", "simple_trend")
 
 
+def _select_fold_winners(train: pd.DataFrame, test: pd.DataFrame, cfg: BacktestConfig, fold: int,
+                          rng: np.random.Generator, shuffle_labels: bool, selection: str) -> pd.DataFrame:
+    test=test.copy(); test["fold"]=fold
+    if selection == "ridge":
+        # Sanity check: fitting on permuted labels severs any feature/outcome
+        # relationship. If the strategy still looks profitable, the real (unshuffled)
+        # result is not trustworthy evidence of learned edge.
+        train_labels=rng.permutation(train.net_return.to_numpy()) if shuffle_labels else train.net_return
+        model=Pipeline([("scale",StandardScaler()),("ridge",Ridge(alpha=cfg.ridge_alpha))])
+        model.fit(train[FEATURES],train_labels)
+        test["predicted_return"]=model.predict(test[FEATURES])
+        qualified=test[test.predicted_return >= cfg.return_threshold_bps/10000]
+        return (qualified.sort_values(["signal_time","predicted_return"],ascending=[True,False])
+                .groupby("signal_time",as_index=False).head(1).sort_values("signal_time"))
+    if selection == "random":
+        # Control: pick a uniformly random candidate per signal_time from the same
+        # deterministic candidate pool Ridge would have chosen from, with no model
+        # in the loop at all. If this performs comparably, the "edge" isn't coming
+        # from candidate selection at all -- it's coming from the exit mechanics
+        # and/or the symbol universe/period.
+        test["predicted_return"]=np.nan
+        return (test.assign(_r=rng.random(len(test)))
+                    .sort_values(["signal_time","_r"])
+                    .groupby("signal_time",as_index=False).head(1)
+                    .drop(columns="_r").sort_values("signal_time"))
+    # simple_trend control: no ML, just pick the strongest-momentum candidate that's
+    # above its 50-day benchmark trend, mirroring a simple trend-following rule.
+    test["predicted_return"]=np.nan
+    pool=test[test.market_above_ema50 >= 1] if "market_above_ema50" in test else test
+    if pool.empty: pool=test
+    return (pool.sort_values(["signal_time","relative_strength_20"],ascending=[True,False])
+                .groupby("signal_time",as_index=False).head(1).sort_values("signal_time"))
+
+
 def walk_forward(candidates: pd.DataFrame, cfg: BacktestConfig, shuffle_labels: bool = False, seed: int = 0,
                   selection: str = "ridge") -> tuple[pd.DataFrame, pd.DataFrame]:
     if selection not in SELECTION_MODES:
@@ -210,43 +244,40 @@ def walk_forward(candidates: pd.DataFrame, cfg: BacktestConfig, shuffle_labels: 
         test=candidates[candidates.signal_time.dt.normalize().isin(test_dates)].dropna(subset=FEATURES)
         needs_train = selection == "ridge"
         if (needs_train and len(train)<200) or test.empty: start += cfg.step_bars; continue
-        test=test.copy(); test["fold"]=fold
-        if selection == "ridge":
-            # Sanity check: fitting on permuted labels severs any feature/outcome
-            # relationship. If the strategy still looks profitable, the real (unshuffled)
-            # result is not trustworthy evidence of learned edge.
-            train_labels=rng.permutation(train.net_return.to_numpy()) if shuffle_labels else train.net_return
-            model=Pipeline([("scale",StandardScaler()),("ridge",Ridge(alpha=cfg.ridge_alpha))])
-            model.fit(train[FEATURES],train_labels)
-            test["predicted_return"]=model.predict(test[FEATURES])
-            qualified=test[test.predicted_return >= cfg.return_threshold_bps/10000]
-            winners=(qualified.sort_values(["signal_time","predicted_return"],ascending=[True,False])
-                     .groupby("signal_time",as_index=False).head(1).sort_values("signal_time"))
-        elif selection == "random":
-            # Control: pick a uniformly random candidate per signal_time from the same
-            # deterministic candidate pool Ridge would have chosen from, with no model
-            # in the loop at all. If this performs comparably, the "edge" isn't coming
-            # from candidate selection at all -- it's coming from the exit mechanics
-            # and/or the symbol universe/period.
-            test["predicted_return"]=np.nan
-            winners=(test.assign(_r=rng.random(len(test)))
-                          .sort_values(["signal_time","_r"])
-                          .groupby("signal_time",as_index=False).head(1)
-                          .drop(columns="_r").sort_values("signal_time"))
-        else:  # simple_trend
-            # Control: no ML, just pick the strongest-momentum candidate that's above
-            # its 50-day benchmark trend, mirroring a simple trend-following rule.
-            test["predicted_return"]=np.nan
-            pool=test[test.market_above_ema50 >= 1] if "market_above_ema50" in test else test
-            if pool.empty: pool=test
-            winners=(pool.sort_values(["signal_time","relative_strength_20"],ascending=[True,False])
-                          .groupby("signal_time",as_index=False).head(1).sort_values("signal_time"))
+        winners=_select_fold_winners(train,test,cfg,fold,rng,shuffle_labels,selection)
         selected.append(winners)
         folds.append({"fold":fold,"train_start":str(train_dates[0]) if len(train_dates) else "","train_end":str(train_dates[-1]) if len(train_dates) else "",
                       "test_start":str(test_dates[0]),"test_end":str(test_dates[-1]),"train_rows":len(train),
                       "test_rows":len(test),"selected_trades":len(winners),"mean_return":winners.net_return.mean() if len(winners) else np.nan})
         fold+=1; start += cfg.step_bars
     return pd.DataFrame(folds), pd.concat(selected,ignore_index=True) if selected else pd.DataFrame()
+
+
+def single_split_forward(candidates: pd.DataFrame, cfg: BacktestConfig, train_start: str, train_end: str,
+                          test_start: str, test_end: str, shuffle_labels: bool = False, seed: int = 0,
+                          selection: str = "ridge") -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Train once on one era and test once on a separate, non-overlapping era
+    (e.g. train 2018-2020, test 2021-2023) instead of rolling walk-forward folds.
+    A stronger out-of-regime generalization check: the rolling folds in
+    walk_forward always retrain close to the test window, so they can't reveal
+    whether a model fit on one regime holds up in a distinctly different later one.
+    """
+    if selection not in SELECTION_MODES:
+        raise ValueError(f"Unknown selection mode: {selection}")
+    train_start_ts,train_end_ts=pd.Timestamp(train_start,tz="UTC"),pd.Timestamp(train_end,tz="UTC")
+    test_start_ts,test_end_ts=pd.Timestamp(test_start,tz="UTC"),pd.Timestamp(test_end,tz="UTC")
+    purge_cutoff=train_end_ts - pd.tseries.offsets.BDay(cfg.purge_bars)
+    train=candidates[(candidates.signal_time>=train_start_ts)&(candidates.signal_time<=purge_cutoff)].dropna(subset=FEATURES+["net_return"])
+    test=candidates[(candidates.signal_time>=test_start_ts)&(candidates.signal_time<=test_end_ts)].dropna(subset=FEATURES)
+    rng=np.random.default_rng(seed)
+    needs_train=selection=="ridge"
+    if (needs_train and len(train)<200) or test.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    winners=_select_fold_winners(train,test,cfg,0,rng,shuffle_labels,selection)
+    folds=pd.DataFrame([{"fold":0,"train_start":str(train_start_ts),"train_end":str(train.signal_time.max()) if len(train) else "",
+                          "test_start":str(test_start_ts),"test_end":str(test_end_ts),"train_rows":len(train),
+                          "test_rows":len(test),"selected_trades":len(winners),"mean_return":winners.net_return.mean() if len(winners) else np.nan}])
+    return folds, winners
 
 
 def simulate_capital(trades: pd.DataFrame, cfg: BacktestConfig) -> tuple[pd.DataFrame, dict]:
@@ -307,7 +338,14 @@ def main():
     p.add_argument("--shuffle-labels",action="store_true",help="Sanity check: permute training labels per fold; a still-profitable result means the model isn't learning real signal.")
     p.add_argument("--seed",type=int,default=0,help="Seed for --shuffle-labels / --selection random.")
     p.add_argument("--selection",choices=SELECTION_MODES,default="ridge",help="Trade-selection control: 'random' or 'simple_trend' bypass the Ridge model entirely for comparison.")
+    p.add_argument("--train-start",default=None,help="Era-split mode: train once on [train-start, train-end] and test once on [test-start, test-end] instead of rolling walk-forward folds. Requires all four --*-start/--*-end args.")
+    p.add_argument("--train-end",default=None)
+    p.add_argument("--test-start",default=None)
+    p.add_argument("--test-end",default=None)
     args=p.parse_args()
+    era_args=(args.train_start,args.train_end,args.test_start,args.test_end)
+    if any(era_args) and not all(era_args):
+        raise SystemExit("--train-start/--train-end/--test-start/--test-end must all be given together")
     cfg=load_config(ROOT/args.config if not Path(args.config).is_absolute() else Path(args.config))
     symbols=tuple(dict.fromkeys((*cfg.symbols,cfg.benchmark)))
     frames=download_yfinance(symbols,cfg.start,cfg.end,cfg.interval) if args.provider=="yfinance" else load_csv_dir(symbols,ROOT/args.csv_dir)
@@ -318,7 +356,11 @@ def main():
     candidates=build_candidates(frames,cfg.benchmark,cfg)
     if candidates.empty: raise RuntimeError("No candidates generated")
     candidates.signal_time=pd.to_datetime(candidates.signal_time,utc=True)
-    folds,trades=walk_forward(candidates,cfg,shuffle_labels=args.shuffle_labels,seed=args.seed,selection=args.selection)
+    if all(era_args):
+        folds,trades=single_split_forward(candidates,cfg,args.train_start,args.train_end,args.test_start,args.test_end,
+                                           shuffle_labels=args.shuffle_labels,seed=args.seed,selection=args.selection)
+    else:
+        folds,trades=walk_forward(candidates,cfg,shuffle_labels=args.shuffle_labels,seed=args.seed,selection=args.selection)
     if trades.empty: raise RuntimeError("No trades selected; reduce threshold or increase history")
     path,summary=simulate_capital(trades,cfg)
     start=pd.Timestamp(trades.signal_time.min()); end=pd.Timestamp(trades.exit_time.max())
@@ -326,7 +368,9 @@ def main():
     out=ROOT/args.output if not Path(args.output).is_absolute() else Path(args.output); out.mkdir(parents=True,exist_ok=True)
     candidates.to_parquet(out/"candidates.parquet",index=False); folds.to_csv(out/"folds.csv",index=False)
     trades.to_csv(out/"selected_trades.csv",index=False); path.to_csv(out/"capital_path.csv",index=False)
-    report={"configuration":{**cfg.__dict__,"shuffle_labels":args.shuffle_labels,"seed":args.seed,"selection":args.selection},"strategy":summary,"benchmark":benchmark,"options_backtest":"disabled: requires historical option-chain data"}
+    report={"configuration":{**cfg.__dict__,"shuffle_labels":args.shuffle_labels,"seed":args.seed,"selection":args.selection,
+                              "train_start":args.train_start,"train_end":args.train_end,"test_start":args.test_start,"test_end":args.test_end},
+            "strategy":summary,"benchmark":benchmark,"options_backtest":"disabled: requires historical option-chain data"}
     (out/"results.json").write_text(json.dumps(report,indent=2,default=str))
     print(json.dumps(report,indent=2,default=str))
 
