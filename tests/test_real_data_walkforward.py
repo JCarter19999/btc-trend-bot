@@ -30,3 +30,18 @@ def test_walk_forward_and_stoppage():
     path,summary=real.simulate_capital(trades,cfg)
     assert summary['ending_equity']>=0
     assert len(path)==len(trades)
+
+def test_drawdown_pause_releases_after_cooldown():
+    # A drawdown_pause must be temporary: it should release after cooldown_trades
+    # skipped candidates rather than freezing equity/peak (and therefore the
+    # drawdown check) forever.
+    cfg=config()
+    idx=pd.bdate_range('2018-01-01',periods=20,tz='UTC')
+    returns=[-0.20]+[0.0]*19  # one big loss trips drawdown_pause, then flat candidates
+    trades=pd.DataFrame({
+        'signal_time':idx,'symbol':['AAPL']*20,'predicted_return':[1.0]*20,'net_return':returns,
+    })
+    path,summary=real.simulate_capital(trades,cfg)
+    assert (path.loc[1:cfg.cooldown_trades,'skip_reason']=='drawdown_pause').all()
+    assert path.loc[cfg.cooldown_trades+1,'trade_taken']
+    assert summary['trades_taken']>1

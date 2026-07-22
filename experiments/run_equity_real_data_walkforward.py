@@ -215,7 +215,7 @@ def walk_forward(candidates: pd.DataFrame, cfg: BacktestConfig) -> tuple[pd.Data
 
 
 def simulate_capital(trades: pd.DataFrame, cfg: BacktestConfig) -> tuple[pd.DataFrame, dict]:
-    equity=cfg.initial_capital; peak=equity; cooldown=0; losses=0; hard=False; rows=[]
+    equity=cfg.initial_capital; peak=equity; cooldown=0; dd_cooldown=0; losses=0; hard=False; rows=[]
     for _,t in trades.sort_values("signal_time").iterrows():
         dd=1-equity/peak
         reason=""
@@ -223,8 +223,13 @@ def simulate_capital(trades: pd.DataFrame, cfg: BacktestConfig) -> tuple[pd.Data
             hard=True; reason="hard_shutdown"
         elif cfg.safety_enabled and cooldown>0:
             cooldown-=1; reason="loss_cooldown"
-        elif cfg.safety_enabled and dd>=cfg.drawdown_pause:
-            reason="drawdown_pause"
+        elif cfg.safety_enabled and (dd_cooldown>0 or dd>=cfg.drawdown_pause):
+            # Trading is halted, so equity/peak can't move on their own to clear the
+            # drawdown condition. Count the pause down like loss_cooldown, then
+            # re-anchor peak to current equity so it doesn't instantly re-trip.
+            if dd_cooldown==0: dd_cooldown=cfg.cooldown_trades
+            dd_cooldown-=1; reason="drawdown_pause"
+            if dd_cooldown==0: peak=equity
         if reason:
             rows.append({"signal_time":t.signal_time,"symbol":t.symbol,"trade_taken":False,"skip_reason":reason,"ending_equity":equity,"drawdown":dd}); continue
         start=equity; pnl=start*float(t.net_return); equity=max(0,start+pnl); peak=max(peak,equity); dd=1-equity/peak

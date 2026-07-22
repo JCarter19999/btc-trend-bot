@@ -68,6 +68,7 @@ def simulate_with_safety(trades: pd.DataFrame, capital: CapitalConfig, safety: S
     max_dd = 0.0
     consecutive_losses = 0
     cooldown = 0
+    dd_cooldown = 0
     option_losses = 0
     option_pause = 0
     hard_stopped = False
@@ -95,11 +96,24 @@ def simulate_with_safety(trades: pd.DataFrame, capital: CapitalConfig, safety: S
         trend_ok = True
         if safety and safety.require_positive_trend:
             trend_ok = float(trade.get('return_26', 0.0)) > -0.01 and float(trade.get('ema_slope_atr', 0.0)) > -0.20
-        paused = safety and (cooldown > 0 or current_dd >= safety.drawdown_pause or not trend_ok)
+        dd_paused = bool(safety) and (dd_cooldown > 0 or current_dd >= safety.drawdown_pause)
+        paused = bool(safety) and (cooldown > 0 or dd_paused or not trend_ok)
         if paused:
             skipped_safety += 1
-            reason = 'loss_cooldown' if cooldown > 0 else ('drawdown_pause' if current_dd >= safety.drawdown_pause else 'regime_gate')
-            if cooldown > 0: cooldown -= 1
+            if cooldown > 0:
+                reason = 'loss_cooldown'
+                cooldown -= 1
+            elif dd_paused:
+                reason = 'drawdown_pause'
+                # Without deposits, equity/peak (and therefore current_dd) can't move
+                # on their own while trading is halted, so the pause would otherwise
+                # never clear. Count it down like loss_cooldown, then re-anchor peak
+                # to current equity so it doesn't instantly re-trip.
+                if dd_cooldown == 0: dd_cooldown = safety.cooldown_trades
+                dd_cooldown -= 1
+                if dd_cooldown == 0: peak = equity
+            else:
+                reason = 'regime_gate'
             if option_pause > 0: option_pause -= 1
             rows.append({'signal_time': t, 'symbol': trade.symbol, 'deposit': deposit, 'starting_equity': equity,
                          'ending_equity': equity, 'trade_taken': False, 'skip_reason': reason, 'drawdown': current_dd,

@@ -27,3 +27,13 @@ def test_bear_regime_gate_can_skip_trade():
     path, summary=simulate_with_safety(trades, CapitalConfig(1000,0,0.3,'cash_safe'), SafetyConfig())
     assert summary['trades_taken']==0
     assert path.iloc[0].skip_reason=='regime_gate'
+
+def test_drawdown_pause_releases_after_cooldown():
+    # With zero deposits, equity/peak can't move on their own while paused, so
+    # drawdown_pause must release after cooldown_trades rather than freezing forever.
+    trades=_trades([-0.20]+[0.0]*10)
+    path, summary=simulate_with_safety(trades, CapitalConfig(1000,0,0.3,'cash_safe'),
+        SafetyConfig(consecutive_loss_limit=99,cooldown_trades=3,drawdown_pause=0.15,hard_shutdown_drawdown=0.99))
+    assert (path.loc[1:3,'skip_reason']=='drawdown_pause').all()
+    assert path.loc[4,'trade_taken']
+    assert summary['trades_taken']>1
