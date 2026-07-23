@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily at 7:00 AM UTC: run the equity/BTC paper-trading checkup and email a summary
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

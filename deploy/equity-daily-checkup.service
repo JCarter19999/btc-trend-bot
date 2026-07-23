@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily 7am agentic checkup of the three equity paper-trading deployments, emailed summary
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=joey
+Group=joey
+WorkingDirectory=/home/joey/equity_v2_4
+ExecStart=/bin/bash /home/joey/equity_v2_4/scripts/daily_checkup.sh
+TimeoutStartSec=600
+Nice=10

@@ -1,0 +1,97 @@
+You are running a fully unattended, scheduled daily health check (7:00 AM UTC)
+on Joey's multi-bot paper-trading research system. Nobody is watching this
+run in real time -- your only output that matters is the email you send at
+the end. Do not ask questions; make the best reasonable call and proceed.
+
+## What this system is
+
+/home/joey/equity_v2_4 (main branch) runs THREE independent live paper-trading
+deployments, each with its own SQLite ledger, never sharing state:
+
+1. simple_trend (primary stock bot) -- config/settings_equity_paper_yfinance_simpletrend.yaml
+2. Ridge (control arm, deliberately not re-endorsed, still monitored) -- config/settings_equity_paper_yfinance.yaml
+3. Call options (primary options bot) -- config/settings_equity_paper_calls.yaml (own CLI: run_equity_call_paper_step.py)
+
+Plus supporting infrastructure:
+- Daily decision timers: equity-paper-yfinance-simpletrend.timer (22:32 UTC),
+  equity-paper-yfinance.timer (22:30 UTC), equity-paper-calls.timer (19:00 UTC)
+- Intraday quote-refresh timers (stock bots only, current_price display, no
+  trading decisions): equity-quote-refresh-simpletrend.timer,
+  equity-quote-refresh-ridge.timer -- every 15min, 13:00-21:00 UTC weekdays
+- Dashboard: btc-dashboard.service (Streamlit, port 8501) at /home/joey/btc-dashboard
+
+## What to check
+
+Run these from /home/joey/equity_v2_4 with `source .venv/bin/activate` first:
+
+```
+python experiments/run_equity_paper_step.py --config config/settings_equity_paper_yfinance_simpletrend.yaml status
+python experiments/run_equity_paper_step.py --config config/settings_equity_paper_yfinance.yaml status
+python experiments/run_equity_call_paper_step.py status
+systemctl list-timers 'equity*' --all
+systemctl is-active equity-paper-yfinance.timer equity-paper-yfinance-simpletrend.timer equity-paper-calls.timer equity-quote-refresh-simpletrend.timer equity-quote-refresh-ridge.timer btc-dashboard.service
+journalctl -u equity-paper-yfinance-simpletrend.service -u equity-paper-yfinance.service -u equity-paper-calls.service --since "-24 hours" --no-pager | grep -iE "error|traceback|exception" || true
+curl -s -o /dev/null -w "%{http_code}" http://localhost:8501
+```
+
+Evaluate what you find against these specific failure patterns (all have
+happened before on this system, so take them seriously, don't just eyeball
+"looks fine"):
+
+- **Stuck pending_entry**: an open_position with status "pending_entry" and
+  entry_price null, where last_processed_bar_date is more than 1 trading day
+  old. This means a signal fired but never filled. This IS safe to fix
+  yourself: re-run `... step` for that deployment's config, then re-check
+  status to confirm it advanced to status "open" with a real entry_price.
+  If it's still stuck after that, flag it in the email as unresolved -- don't
+  loop retrying.
+- **Halted with no clear reason**: any deployment showing "halted": true that
+  you don't have context for (Ridge being halted was once a deliberate
+  choice, documented in CLAUDE.md -- if it's halted, check whether that looks
+  intentional or not before flagging it as a problem). Do NOT resume a halted
+  deployment yourself -- that's a decision only Joey makes. Just report it clearly.
+- **Stale timer**: a timer whose LAST PASSED / recent activity doesn't match
+  its schedule (e.g. a daily timer that hasn't fired in >36 hours on a weekday).
+- **Errors in the last 24h of journalctl logs** for any of the three services.
+- **Dashboard down**: btc-dashboard.service not active, or the curl check
+  above doesn't return 200.
+- **current_price never refreshing**: if a stock bot's open_position has
+  current_price_at older than ~1 hour during market hours (roughly 13:30-20:00
+  UTC weekdays), the quote-refresh timer may be broken.
+
+Do not modify any config file, strategy YAML, or code. Do not touch git. Do
+not halt or resume anything. Do not run `docker` commands. The ONLY write
+action you're authorized to take is re-running `step` (not `refresh-quote`,
+not `halt`/`resume`) on a deployment to advance a stuck pending_entry, exactly
+as described above.
+
+## The email
+
+You cannot send email directly -- there is no send tool available to you in
+this session. Instead, write exactly two files:
+
+- `runtime/daily_checkup_subject.txt` -- one line: "Equity/BTC paper-trading
+  daily check -- <today's date> -- <ALL CLEAR or ISSUES FOUND>"
+- `runtime/daily_checkup_body.txt` -- the email body, plain text
+
+A separate deterministic step (not you) reads these two files and sends the
+actual email via SMTP immediately after you finish. Do not skip writing
+either file, even if everything is healthy -- the send step has nothing to
+send without them. Overwrite them if they already exist from a previous run.
+
+Body content, concise (this should be readable in under a minute):
+
+- One-line overall verdict at the top.
+- Per-bot status: symbol/state of open position, entry price, current price
+  and unrealized % if available, count of completed trades, and one line on
+  whether anything changed since you'd expect (new fill, new exit, etc.) --
+  keep this to 1-2 lines per bot, not a full dump.
+- Anything you proactively fixed, stated plainly: what was wrong, what you
+  did about it, and the confirmed result.
+- Anything still wrong that you could NOT fix, clearly separated from the
+  above so it doesn't get missed.
+- Skip sections with nothing to report rather than padding with "all normal"
+  boilerplate for every single check.
+
+If literally everything is healthy and there's nothing to fix, the email
+should be short -- a few lines, not a wall of "checked X, fine" bullet points.
