@@ -1,0 +1,100 @@
+{
+  "train": {
+    "baseline_no_breaker": {
+      "starting_equity": 10000.0,
+      "ending_equity": 44562.452975893066,
+      "total_return": 3.456245297589307,
+      "annualized_return": 0.45354235734683734,
+      "annualized_volatility": 0.26824761426417504,
+      "sharpe": 1.527977238449917,
+      "sortino": 2.2577151977818017,
+      "max_drawdown": -0.251654920211866,
+      "calmar": 1.8022391811970304,
+      "exposure": 0.4772026054165238,
+      "total_turnover": 63.92327988908455,
+      "positive_bar_rate": 0.24968575019997716
+    },
+    "buy_and_hold_btc": {
+      "starting_equity": 10000.0,
+      "ending_equity": 34296.60086091742,
+      "total_return": 2.429660086091742,
+      "annualized_return": 0.3613371574943707,
+      "annualized_volatility": 0.7812842434562945,
+      "sharpe": 0.7864319178853804,
+      "sortino": 1.120784307572602,
+      "max_drawdown": -0.8163733647425963,
+      "calmar": 0.44261262444335236,
+      "exposure": 1.0,
+      "total_turnover": 0.0,
+      "positive_bar_rate": 0.5130842189464061
+    },
+    "two_tier_safety_chosen": {
+      "starting_equity": 10000.0,
+      "ending_equity": 42348.303248046584,
+      "total_return": 3.2348303248046584,
+      "annualized_return": 0.43511961246109054,
+      "annualized_volatility": 0.26556000511360156,
+      "sharpe": 1.4926719151552006,
+      "sortino": 2.2124832534722207,
+      "max_drawdown": -0.2548653415565387,
+      "calmar": 1.7072529744675569,
+      "exposure": 0.46828933836133013,
+      "total_turnover": 64.28577668074837,
+      "positive_bar_rate": 0.24477202605416523
+    },
+    "safety_reason_bar_counts": {
+      "": 8511,
+      "drawdown_pause": 150,
+      "loss_cooldown": 90
+    }
+  },
+  "test": {
+    "baseline_no_breaker": {
+      "starting_equity": 10000.0,
+      "ending_equity": 16144.21634071731,
+      "total_return": 0.614421634071731,
+      "annualized_return": 0.11086359870188356,
+      "annualized_volatility": 0.2425423698498397,
+      "sharpe": 0.5546890920710343,
+      "sortino": 0.795595719567365,
+      "max_drawdown": -0.3130203827780571,
+      "calmar": 0.3541737369239942,
+      "exposure": 0.45790739627179794,
+      "total_turnover": 85.3003845508074,
+      "positive_bar_rate": 0.23331328923631992
+    },
+    "buy_and_hold_btc": {
+      "starting_equity": 10128.27398702134,
+      "ending_equity": 14300.981752491356,
+      "total_return": 0.411986067005794,
+      "annualized_return": 0.07866975991174363,
+      "annualized_volatility": 0.5002754946854753,
+      "sharpe": 0.40711964618994384,
+      "sortino": 0.5783132473974393,
+      "max_drawdown": -0.6726219839678478,
+      "calmar": 0.116959840425769,
+      "exposure": 1.0,
+      "total_turnover": 0.0,
+      "positive_bar_rate": 0.5082180797755061
+    },
+    "two_tier_safety_chosen": {
+      "starting_equity": 10000.0,
+      "ending_equity": 17024.113854670068,
+      "total_return": 0.7024113854670069,
+      "annualized_return": 0.12387958987119485,
+      "annualized_volatility": 0.23750946638886514,
+      "sharpe": 0.6103278652873283,
+      "sortino": 0.8831050247205668,
+      "max_drawdown": -0.2867240534029295,
+      "calmar": 0.43205161339257614,
+      "exposure": 0.4442774103026659,
+      "total_turnover": 87.44080265516384,
+      "positive_bar_rate": 0.22559631188614954
+    },
+    "safety_reason_bar_counts": {
+      "": 9708,
+      "drawdown_pause": 210,
+      "loss_cooldown": 60
+    }
+  }
+}

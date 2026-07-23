@@ -1,0 +1,7 @@
+{
+  "drawdown_pause": 0.15,
+  "hard_shutdown_drawdown": 0.35,
+  "minimum_equity_fraction": 0.01,
+  "consecutive_loss_limit_bars": 8,
+  "cooldown_bars": 60
+}

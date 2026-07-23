@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the two-tier safety-layer candidate paper step after each 4h candle closes
+
+[Timer]
+# 00:12, 04:12, 08:12, 12:12, 16:12, 20:12 UTC -- offset 7 minutes after the
+# real production step (00,04,...:05 UTC via run_scheduled_bot.py) so the two
+# never contend for the same CCXT rate-limit window.
+OnCalendar=*-*-* 00,04,08,12,16,20:12:00 UTC
+Persistent=true
+RandomizedDelaySec=20
+Unit=two-tier-safety-paper.service
+
+[Install]
+WantedBy=timers.target

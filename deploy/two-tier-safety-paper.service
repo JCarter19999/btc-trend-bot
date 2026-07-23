@@ -1,0 +1,13 @@
+[Unit]
+Description=Two-tier safety-layer candidate: live paper trading step (research, no live orders)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=joey
+Group=joey
+WorkingDirectory=/home/joey/btc-trend-bot
+ExecStart=/home/joey/btc-trend-bot/.venv/bin/python experiments/run_two_tier_safety_paper_step.py
+TimeoutStartSec=5min
+UMask=0077

@@ -11,6 +11,7 @@ outputs/*.png
 data/*.csv
 paper/*.json
 paper/*.csv
+paper/*.jsonl
 !data/.gitkeep
 !outputs/.gitkeep
 !paper/.gitkeep
