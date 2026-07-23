@@ -1,0 +1,22 @@
+# Deployment-only settings for Schwab daily equity paper trading (Phase 2 shadow
+# deployment, per CLAUDE.md). Strategy parameters (symbols, thresholds, ATR,
+# safety, position_fraction, initial_capital) live in the frozen snapshot at
+# strategy_config below, NOT here -- see that file's header for the promotion
+# workflow. Schwab credentials themselves are environment variables only
+# (SCHWAB_API_KEY, SCHWAB_APP_SECRET, SCHWAB_CALLBACK_URL), never in YAML.
+strategy_config: config/schwab_paper_strategy.yaml
+
+schwab:
+  token_path: runtime/schwab_token.json
+  lookback_days: 1400   # trailing calendar days fetched per symbol on each step
+
+paper:
+  ledger_db_path: runtime/equity_schwab_paper.sqlite3
+  lock_path: runtime/equity_schwab_paper.lock
+  selection: ridge   # ridge | random | simple_trend -- controls exist for parity
+                      # with the backtest diagnostics; real deployment stays "ridge"
+  # Optional Supabase telemetry mirror (see sql/003_equity_paper_runs.sql). Reads
+  # SUPABASE_URL/SUPABASE_SECRET_KEY from the environment; silently a no-op if
+  # unset. Both defaults shown below and normally don't need overriding.
+  # supabase_table: equity_paper_runs
+  # supabase_outbox_path: runtime/equity_schwab_paper_supabase_outbox.jsonl

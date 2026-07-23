@@ -1,0 +1,11 @@
+[Unit]
+Description=BTC Trend Bot one-shot execution
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/btc-trend-bot
+ExecStart=/usr/bin/docker compose run --rm btc-trend-bot
+TimeoutStartSec=180

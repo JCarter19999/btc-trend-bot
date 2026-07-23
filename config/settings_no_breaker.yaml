@@ -1,0 +1,43 @@
+market:
+  exchange: kraken
+  symbol: BTC/USD
+  timeframe: 4h
+  start: '2018-01-01T00:00:00Z'
+  data_path: data/btc_usd_4h_coinbase.csv
+  max_download_bars: 50000
+
+data_quality:
+  require_configured_start: true
+  max_missing_rate: 0.005
+  max_single_gap_bars: 6
+
+strategy:
+  mode: long_flat
+  fast_ema_bars: 42
+  slow_ema_bars: 252
+  breakout_bars: 120
+  atr_bars: 42
+  realized_vol_bars: 42
+  long_vol_bars: 252
+  target_annual_vol: 0.35
+  min_position: 0.0
+  max_position: 1.0
+  trend_strength_atr: 0.35
+  vol_shock_ratio: 1.8
+  vol_shock_multiplier: 0.50
+
+backtest:
+  initial_cash: 10000.0
+  fee_bps_per_turnover: 6.0
+  slippage_bps_per_turnover: 4.0
+  max_drawdown_breaker: 0.0
+  bars_per_year: 2190
+  bootstrap_samples: 2000
+  bootstrap_block_bars: 42
+  random_seed: 42
+
+paper:
+  initial_cash: 10000.0
+  state_path: paper/paper_state.json
+  trades_path: paper/paper_trades.csv
+  lookback_bars: 900

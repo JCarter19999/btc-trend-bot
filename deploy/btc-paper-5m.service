@@ -1,0 +1,15 @@
+[Unit]
+Description=BTC five-minute paper laboratory one-shot
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=joey
+Group=joey
+WorkingDirectory=/home/joey/btc-paper-5m
+EnvironmentFile=-/home/joey/.config/btc-trend-bot/telemetry.env
+ExecStart=/usr/bin/docker compose -f compose.paper-5m.yaml run --rm btc-paper-5m
+TimeoutStartSec=240
+Nice=10

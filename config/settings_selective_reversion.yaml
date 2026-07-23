@@ -1,0 +1,134 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+features:
+  ema_fast_5m: 9
+  ema_slow_5m: 21
+  m15_atr_period: 20
+  m15_adx_period: 14
+  m15_ema_fast: 20
+  m15_ema_slow: 50
+  m15_donchian_entry: 24
+  m15_donchian_exit: 12
+  m30_atr_period: 20
+  m30_adx_period: 14
+  m30_ema_fast: 20
+  m30_ema_slow: 50
+  m30_donchian_entry: 24
+  m30_donchian_exit: 12
+  h1_atr_period: 20
+  h1_adx_period: 14
+  h1_ema_fast: 20
+  h1_ema_slow: 50
+  h4_atr_period: 20
+  h4_adx_period: 14
+  h4_ema_fast: 20
+  h4_ema_slow: 50
+  d1_ema_fast: 10
+  d1_ema_slow: 30
+  d1_momentum_days: 5
+  volatility_median_bars_15m: 96
+costs:
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+research:
+  initial_cash: 500.0
+  cost_sensitivity_all_in_bps_per_side: [3, 5, 8, 10, 12]
+strategies:
+  - id: cash_5m
+    type: cash
+  - id: buy_hold_5m
+    type: buy_hold
+  - id: rsi2_v06_control
+    type: rsi2_v06_control
+    signal_source: 5m
+    entry_rsi: 8
+    recovery_ticks: 1
+    min_h4_trend_bps: 0
+    min_d1_trend_bps: -100000
+    min_d1_momentum_bps: -100000
+    min_atr_ratio: 0
+    max_atr_ratio: 100
+    expected_move_atr_multiple: 100
+    cost_hurdle_multiple: 0
+    cooldown_bars_5m: 0
+    minimum_hold_bars_5m: 6
+    maximum_hold_bars_5m: 576
+    exit_rsi: 70
+    trailing_stop_atr: 2.5
+  - id: rsi2_selective_5m_balanced
+    type: selective_rsi2
+    signal_source: 5m
+    entry_rsi: 4
+    recovery_ticks: 2
+    setup_expiry_bars_5m: 36
+    min_h4_trend_bps: 10
+    min_d1_trend_bps: -25
+    min_d1_momentum_bps: -150
+    min_atr_ratio: 0.65
+    max_atr_ratio: 1.8
+    expected_move_atr_multiple: 1.5
+    cost_hurdle_multiple: 1.25
+    cooldown_bars_5m: 36
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 144
+    exit_rsi: 78
+    trailing_stop_atr: 3.0
+  - id: rsi2_selective_5m_strict
+    type: selective_rsi2
+    signal_source: 5m
+    entry_rsi: 2
+    recovery_ticks: 2
+    setup_expiry_bars_5m: 48
+    min_h4_trend_bps: 25
+    min_d1_trend_bps: 0
+    min_d1_momentum_bps: -75
+    min_atr_ratio: 0.75
+    max_atr_ratio: 1.5
+    expected_move_atr_multiple: 1.75
+    cost_hurdle_multiple: 1.5
+    cooldown_bars_5m: 72
+    minimum_hold_bars_5m: 18
+    maximum_hold_bars_5m: 216
+    exit_rsi: 82
+    trailing_stop_atr: 3.25
+  - id: rsi2_selective_15m_balanced
+    type: selective_rsi2
+    signal_source: 15m
+    entry_rsi: 5
+    recovery_ticks: 2
+    setup_expiry_bars_5m: 144
+    min_h4_trend_bps: 10
+    min_d1_trend_bps: -25
+    min_d1_momentum_bps: -150
+    min_atr_ratio: 0.65
+    max_atr_ratio: 1.8
+    expected_move_atr_multiple: 1.5
+    cost_hurdle_multiple: 1.25
+    cooldown_bars_5m: 48
+    minimum_hold_bars_5m: 18
+    maximum_hold_bars_5m: 216
+    exit_rsi: 75
+    trailing_stop_atr: 3.0
+  - id: rsi2_selective_15m_strict
+    type: selective_rsi2
+    signal_source: 15m
+    entry_rsi: 3
+    recovery_ticks: 2
+    setup_expiry_bars_5m: 192
+    min_h4_trend_bps: 25
+    min_d1_trend_bps: 0
+    min_d1_momentum_bps: -75
+    min_atr_ratio: 0.75
+    max_atr_ratio: 1.5
+    expected_move_atr_multiple: 1.75
+    cost_hurdle_multiple: 1.5
+    cooldown_bars_5m: 96
+    minimum_hold_bars_5m: 24
+    maximum_hold_bars_5m: 288
+    exit_rsi: 80
+    trailing_stop_atr: 3.25

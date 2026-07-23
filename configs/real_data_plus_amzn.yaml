@@ -1,0 +1,29 @@
+# Research variant of configs/real_data.yaml testing one isolated hypothesis:
+# adding AMZN to the tradable symbol universe. Every other parameter is
+# identical to the frozen baseline -- see CLAUDE.md: a universe change is a
+# new hypothesis to validate, not an in-place edit to the live/frozen config.
+symbols: [AAPL, MSFT, NVDA, TSLA, AMZN]
+benchmark: SPY
+start: '2018-01-01'
+end: null
+interval: 1d
+auto_adjust: true
+initial_capital: 2500.0
+position_fraction: 0.25  # fraction of equity committed to each trade; rest stays uninvested in cash
+return_threshold_bps: 10.0
+max_hold_bars: 10
+train_bars: 756
+test_bars: 126
+step_bars: 126
+purge_bars: 10
+ridge_alpha: 10.0
+stop_atr: 1.35
+target_atr: 2.15
+slippage_bps_each_side: 2.0
+safety:
+  enabled: true
+  drawdown_pause: 0.15
+  hard_shutdown_drawdown: 0.35
+  consecutive_loss_limit: 4
+  cooldown_trades: 8
+  minimum_equity: 25.0

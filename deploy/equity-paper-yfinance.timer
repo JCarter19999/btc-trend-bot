@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the equity daily paper-trading step after each US market close
+
+[Timer]
+# 22:30 UTC, Mon-Fri -- comfortably after the 4pm ET close in both EDT (20:00
+# UTC) and EST (21:00 UTC), with margin for yfinance's daily-bar publish lag.
+# Weekends are skipped, but the step is idempotent/catch-up safe regardless
+# (see run_equity_paper_step.py), so a missed or extra firing is harmless.
+OnCalendar=Mon..Fri *-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+AccuracySec=1s
+Unit=equity-paper-yfinance.service
+
+[Install]
+WantedBy=timers.target

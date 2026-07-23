@@ -1,0 +1,21 @@
+services:
+  dashboard:
+    build: .
+    command: streamlit run dashboard/3_V1_Operations.py --server.address=0.0.0.0 --server.port=8501
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./runtime:/app/runtime
+      - ./models:/app/models
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8501:8501"
+  scheduler:
+    build: .
+    command: python -m btc_trend_bot.v1.scheduler
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./runtime:/app/runtime
+      - ./models:/app/models
+      - ./data:/app/data

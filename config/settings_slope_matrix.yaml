@@ -1,0 +1,165 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+
+costs:
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+
+research:
+  initial_cash: 500.0
+  cost_sensitivity_all_in_bps_per_side: [3, 5, 8, 10, 12]
+  chronological_folds: 5
+  fold_history_rows: 2400
+  diagnostic_horizons_signal_bars: [1, 2, 4, 8, 16]
+
+strategies:
+  - id: cash_5m
+    type: cash
+
+  - id: buy_hold_5m
+    type: buy_hold
+
+  # Highest-tempo stress candidate. Three completed 5m confirmations reduce
+  # one-tick derivative noise while still allowing a response within 15 minutes.
+  - id: slope_5m_fast_3tick
+    type: rolling_slope
+    signal_timeframe: 5m
+    lookback_bars: 18
+    polynomial_degree: 1
+    volatility_window_bars: 18
+    entry_slope_score: 0.18
+    exit_slope_score: -0.10
+    minimum_fit_r2: 0.20
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.75
+    entry_confirmation_ticks: 3
+    exit_confirmation_ticks: 3
+    minimum_hold_signal_bars: 6
+    maximum_hold_signal_bars: 72
+    cooldown_signal_bars: 3
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 12
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.03
+
+  # Primary high-tempo candidate: 4-hour trailing fit, 30-minute confirmation.
+  - id: slope_15m_fast_2tick
+    type: rolling_slope
+    signal_timeframe: 15m
+    lookback_bars: 16
+    polynomial_degree: 1
+    volatility_window_bars: 16
+    entry_slope_score: 0.15
+    exit_slope_score: -0.08
+    minimum_fit_r2: 0.15
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.75
+    entry_confirmation_ticks: 2
+    exit_confirmation_ticks: 2
+    minimum_hold_signal_bars: 4
+    maximum_hold_signal_bars: 48
+    cooldown_signal_bars: 1
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 8
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.03
+
+  # Same signal as above, but requires 45 minutes of persistence. This isolates
+  # the speed-versus-false-inversion tradeoff rather than changing many inputs.
+  - id: slope_15m_fast_3tick
+    type: rolling_slope
+    signal_timeframe: 15m
+    lookback_bars: 16
+    polynomial_degree: 1
+    volatility_window_bars: 16
+    entry_slope_score: 0.15
+    exit_slope_score: -0.08
+    minimum_fit_r2: 0.15
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.75
+    entry_confirmation_ticks: 3
+    exit_confirmation_ticks: 3
+    minimum_hold_signal_bars: 4
+    maximum_hold_signal_bars: 48
+    cooldown_signal_bars: 1
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 8
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.03
+
+  # A causal quadratic endpoint derivative. Positive/negative curvature must
+  # agree with the slope inversion, making this more responsive but noisier.
+  - id: slope_15m_quadratic_2tick
+    type: rolling_slope
+    signal_timeframe: 15m
+    lookback_bars: 16
+    polynomial_degree: 2
+    volatility_window_bars: 16
+    entry_slope_score: 0.12
+    exit_slope_score: -0.06
+    minimum_fit_r2: 0.20
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.50
+    require_positive_acceleration: true
+    minimum_entry_acceleration_score: 0.00
+    require_negative_acceleration: true
+    maximum_exit_acceleration_score: 0.00
+    entry_confirmation_ticks: 2
+    exit_confirmation_ticks: 2
+    minimum_hold_signal_bars: 4
+    maximum_hold_signal_bars: 48
+    cooldown_signal_bars: 1
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 8
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.03
+
+  # Slower intraday comparator: 8-hour fit and one-hour confirmation.
+  - id: slope_30m_balanced_2tick
+    type: rolling_slope
+    signal_timeframe: 30m
+    lookback_bars: 16
+    polynomial_degree: 1
+    volatility_window_bars: 16
+    entry_slope_score: 0.12
+    exit_slope_score: -0.06
+    minimum_fit_r2: 0.15
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.75
+    entry_confirmation_ticks: 2
+    exit_confirmation_ticks: 2
+    minimum_hold_signal_bars: 3
+    maximum_hold_signal_bars: 48
+    cooldown_signal_bars: 1
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 6
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.04
+
+  # One-hour reference. It is retained only to show whether slowing the same
+  # mathematical rule improves signal quality; the emphasis remains 5m-30m.
+  - id: slope_1h_reference_2tick
+    type: rolling_slope
+    signal_timeframe: 1h
+    lookback_bars: 12
+    polynomial_degree: 1
+    volatility_window_bars: 12
+    entry_slope_score: 0.10
+    exit_slope_score: -0.05
+    minimum_fit_r2: 0.12
+    minimum_exit_fit_r2: 0.05
+    minimum_entry_tstat: 0.50
+    entry_confirmation_ticks: 2
+    exit_confirmation_ticks: 2
+    minimum_hold_signal_bars: 2
+    maximum_hold_signal_bars: 72
+    cooldown_signal_bars: 1
+    require_cost_hurdle: true
+    cost_hurdle_expected_hold_signal_bars: 6
+    cost_hurdle_multiple: 1.25
+    emergency_stop_pct: 0.05

@@ -1,0 +1,12 @@
+numpy<3,>=1.26
+pandas<3,>=2.2
+PyYAML<7,>=6.0
+matplotlib<4,>=3.8
+ccxt<5,>=4.4
+coinbase-advanced-py<2,>=1.8
+streamlit<2,>=1.38
+joblib<2,>=1.4
+pyarrow<20,>=17
+scikit-learn<2,>=1.5
+requests<3,>=2.32
+yfinance<1,>=0.2.54

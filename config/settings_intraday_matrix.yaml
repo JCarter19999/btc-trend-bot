@@ -1,0 +1,104 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+
+features:
+  doji_threshold_bps: 1.0
+  atr_bars_5m: 24
+  breakout_lookback_bars_5m: 24
+  volume_window_bars_5m: 48
+  execution_ema_bars_5m: 12
+  pullback_window_bars_5m: 12
+  vwap_window_bars_5m: 96
+  vwap_std_window_bars_5m: 96
+  one_hour_fast_ema_bars: 24
+  one_hour_slow_ema_bars: 72
+  one_hour_momentum_bars: 24
+  four_hour_momentum_bars: 1
+
+costs:
+  # Corrected low-fee research assumptions from the Binance.US experiment.
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+
+research:
+  initial_cash: 500.0
+  cost_sensitivity_all_in_bps_per_side: [3, 5, 8, 10, 12]
+  chronological_folds: 5
+  fold_history_rows: 1000
+
+strategies:
+  - id: cash_5m
+    type: cash
+
+  - id: buy_hold_5m
+    type: buy_hold
+
+  # Retained only as the high-turnover control from the prior experiment.
+  - id: candle_run_2bar_fee_aware_5m
+    type: candle_run_control
+    entry_run_bars: 2
+    exit_run_bars: 2
+    min_run_return_bps: 16.0
+    min_relative_volume: 0.80
+    min_body_fraction: 0.40
+    require_above_execution_ema: true
+
+  # Primary candidate: unusual 5m range expansion inside bullish 1h/4h context.
+  - id: breakout_5m_1h_regime
+    type: volatility_breakout
+    minimum_range_atr: 1.25
+    minimum_relative_volume: 1.50
+    entry_1h_ema_spread_bps: 0.0
+    entry_1h_momentum_bps: 0.0
+    minimum_4h_momentum_bps: 0.0
+    exit_1h_ema_spread_bps: -10.0
+    exit_1h_momentum_bps: -10.0
+    exit_confirmations_required: 2
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 144
+    cooldown_bars_5m: 12
+    trailing_stop_atr: 2.5
+
+  # Opposite hypothesis: buy unusually weak prices when selling begins to ease.
+  - id: vwap_reversion_5m
+    type: vwap_reversion
+    entry_z_score: -2.0
+    exit_z_score: -0.25
+    stop_z_score: -3.25
+    minimum_1h_ema_spread_bps: -20.0
+    exit_1h_ema_spread_bps: -25.0
+    exit_1h_momentum_bps: -25.0
+    exit_confirmations_required: 2
+    require_selling_pressure_easing: true
+    minimum_hold_bars_5m: 3
+    maximum_hold_bars_5m: 72
+    cooldown_bars_5m: 12
+
+  # Slow signal control: the 1h regime decides both entry and exit immediately.
+  - id: momentum_1h_immediate
+    type: momentum_1h
+    entry_1h_ema_spread_bps: 0.0
+    entry_1h_momentum_bps: 0.0
+    exit_1h_ema_spread_bps: -10.0
+    exit_1h_momentum_bps: -10.0
+    exit_confirmations_required: 2
+    minimum_hold_bars_5m: 12
+    cooldown_bars_5m: 12
+
+  # Same 1h regime and exit as above; only the entry is timed with 5m data.
+  - id: momentum_1h_5m_entry
+    type: momentum_1h_5m_entry
+    entry_1h_ema_spread_bps: 0.0
+    entry_1h_momentum_bps: 0.0
+    exit_1h_ema_spread_bps: -10.0
+    exit_1h_momentum_bps: -10.0
+    exit_confirmations_required: 2
+    minimum_pullback_bps: -5.0
+    maximum_entry_wait_bars_5m: 12
+    minimum_hold_bars_5m: 12
+    cooldown_bars_5m: 12

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run BTC five-minute paper laboratory after every completed candle
+
+[Timer]
+# Two minutes after each five-minute UTC boundary.
+OnCalendar=*-*-* *:02,07,12,17,22,27,32,37,42,47,52,57:00 UTC
+Persistent=true
+RandomizedDelaySec=10
+AccuracySec=1s
+Unit=btc-paper-5m.service
+
+[Install]
+WantedBy=timers.target

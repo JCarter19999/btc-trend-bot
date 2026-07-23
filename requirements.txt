@@ -1,0 +1,15 @@
+numpy>=1.26,<3
+pandas>=2.2,<3
+PyYAML>=6.0,<7
+matplotlib>=3.8,<4
+ccxt>=4.4,<5
+coinbase-advanced-py>=1.8,<2
+pytest>=8,<10
+
+requests>=2.32,<3
+scikit-learn>=1.5,<2
+pyarrow>=17,<20
+joblib>=1.4,<2
+streamlit>=1.38,<2
+
+yfinance>=0.2.54,<1

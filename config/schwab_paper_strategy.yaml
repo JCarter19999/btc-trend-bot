@@ -1,0 +1,35 @@
+# Frozen strategy-parameter snapshot for the Schwab live-paper deployment.
+#
+# This is a deliberately promoted COPY of configs/real_data.yaml, not a live
+# reference to it. Research edits to configs/real_data.yaml must never silently
+# change live paper-trading behavior -- re-promote by hand (copy the current
+# configs/real_data.yaml over this file, review the diff, commit) when you want
+# the live deployment to pick up a newly-validated parameter set. See
+# config/settings_schwab_equity_paper.yaml and CLAUDE.md.
+#
+# Promoted from configs/real_data.yaml on 2026-07-23.
+symbols: [AAPL, MSFT, NVDA, TSLA]
+benchmark: SPY
+start: '2018-01-01'
+end: null
+interval: 1d
+auto_adjust: true
+initial_capital: 2500.0
+position_fraction: 0.25  # fraction of equity committed to each trade; rest stays uninvested in cash
+return_threshold_bps: 10.0
+max_hold_bars: 10
+train_bars: 756
+test_bars: 126
+step_bars: 126
+purge_bars: 10
+ridge_alpha: 10.0
+stop_atr: 1.35
+target_atr: 2.15
+slippage_bps_each_side: 2.0
+safety:
+  enabled: true
+  drawdown_pause: 0.15
+  hard_shutdown_drawdown: 0.35
+  consecutive_loss_limit: 4
+  cooldown_trades: 8
+  minimum_equity: 25.0

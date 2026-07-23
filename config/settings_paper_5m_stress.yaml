@@ -1,0 +1,71 @@
+market:
+  # Public market data only. No Coinbase credentials or order permissions are used.
+  exchange: coinbase
+  symbol: BTC/USD
+  timeframe: 5m
+
+features_5m:
+  # Bodies below this size are treated as dojis and break a directional run.
+  doji_threshold_bps: 1.0
+  volume_window_bars: 48
+  broader_trend_ema_bars: 48
+
+paper_lab:
+  initial_cash: 500.0
+  lookback_bars: 500
+
+  # Conservative placeholder for a low-volume Coinbase Advanced account.
+  # Replace this with the taker fee displayed in your own Coinbase account.
+  fee_bps_per_side: 120.0
+  slippage_bps_per_side: 5.0
+
+  # Historical candles do not include bid/ask. This explicit assumption is used
+  # by research; live paper steps use the public ticker's observed bid and ask.
+  assumed_spread_bps_per_side: 1.0
+
+  allocation_cap: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 2.0
+
+  state_db_path: runtime/paper_5m.sqlite3
+  lock_path: runtime/paper_5m.lock
+  outbox_path: runtime/paper_5m_supabase_outbox.jsonl
+
+  # SQLite records every strategy on every completed 5-minute bar. Supabase gets
+  # each strategy every third bar (15-minute chart resolution), plus every trade.
+  supabase_snapshot_every_bars: 3
+
+paper_strategies:
+  - id: cash_5m
+    type: cash
+
+  - id: buy_hold_5m
+    type: buy_hold
+
+  # Maximum-turnover stress test of the user's core hypothesis:
+  # one green candle -> BTC; one red candle -> cash.
+  - id: candle_follow_1bar_5m
+    type: candle_run
+    entry_run_bars: 1
+    exit_run_bars: 1
+    fee_aware: false
+
+  # A slightly less reactive confirmation variant.
+  - id: candle_run_2bar_5m
+    type: candle_run
+    entry_run_bars: 2
+    exit_run_bars: 2
+    fee_aware: false
+
+  # The two-bar hypothesis with a full estimated round-trip cost hurdle and
+  # basic candle-quality/regime filters.
+  - id: candle_run_2bar_fee_aware_5m
+    type: candle_run
+    entry_run_bars: 2
+    exit_run_bars: 2
+    fee_aware: true
+    cost_hurdle_multiplier: 1.0
+    min_run_return_bps: 0.0
+    min_relative_volume: 0.80
+    min_body_fraction: 0.40
+    require_broader_uptrend: true

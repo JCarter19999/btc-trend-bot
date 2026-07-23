@@ -1,0 +1,106 @@
+market:
+  exchange: binanceus
+  symbol: BTC/USD
+  timeframe: 5m
+features:
+  ema_fast_5m: 9
+  ema_slow_5m: 21
+  m15_atr_period: 20
+  m15_adx_period: 14
+  m15_ema_fast: 20
+  m15_ema_slow: 50
+  m15_donchian_entry: 24
+  m15_donchian_exit: 12
+  m30_atr_period: 20
+  m30_adx_period: 14
+  m30_ema_fast: 20
+  m30_ema_slow: 50
+  m30_donchian_entry: 24
+  m30_donchian_exit: 12
+  h1_atr_period: 20
+  h1_adx_period: 14
+  h1_ema_fast: 20
+  h1_ema_slow: 50
+  h4_atr_period: 20
+  h4_adx_period: 14
+  h4_ema_fast: 20
+  h4_ema_slow: 50
+  squeeze_period: 20
+costs:
+  fee_bps_per_side: 2.0
+  slippage_bps_per_side: 5.0
+  assumed_spread_bps_per_side: 1.0
+  min_notional: 10.0
+  rebalance_tolerance_bps: 1.0
+research:
+  initial_cash: 500.0
+  cost_sensitivity_all_in_bps_per_side: [3, 5, 8, 10, 12]
+  chronological_folds: 5
+  fold_history_rows: 4000
+strategies:
+  - {id: cash_5m, type: cash}
+  - {id: buy_hold_5m, type: buy_hold}
+  - id: donchian_15m_atr
+    type: donchian
+    prefix: m15
+    min_adx: 18
+    min_trend_bps: 0
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 576
+    cooldown_bars_5m: 12
+    trailing_stop_atr: 2.5
+  - id: donchian_30m_atr
+    type: donchian
+    prefix: m30
+    min_adx: 18
+    min_trend_bps: 0
+    minimum_hold_bars_5m: 24
+    maximum_hold_bars_5m: 1152
+    cooldown_bars_5m: 24
+    trailing_stop_atr: 2.5
+  - id: ema_pullback_5m_1h
+    type: ema_pullback
+    higher: h1
+    trigger: 5m
+    min_adx: 18
+    min_trend_bps: 0
+    pullback_bps: -5
+    exit_trend_bps: -10
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 576
+    cooldown_bars_5m: 12
+    trailing_stop_atr: 3.0
+  - id: ema_pullback_15m_4h
+    type: ema_pullback
+    higher: h4
+    trigger: 15m
+    min_adx: 18
+    min_trend_bps: 0
+    exit_trend_bps: -10
+    minimum_hold_bars_5m: 36
+    maximum_hold_bars_5m: 1728
+    cooldown_bars_5m: 24
+    trailing_stop_atr: 3.0
+  - id: bollinger_squeeze_15m
+    type: squeeze
+    min_h1_trend_bps: 0
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 576
+    cooldown_bars_5m: 12
+    trailing_stop_atr: 2.5
+  - id: rsi2_reversion_5m_4h_filter
+    type: rsi2
+    entry_rsi: 8
+    exit_rsi: 70
+    min_h4_trend_bps: 0
+    minimum_hold_bars_5m: 3
+    maximum_hold_bars_5m: 144
+    cooldown_bars_5m: 6
+    trailing_stop_atr: 3.0
+  - id: macd_15m_adx_baseline
+    type: macd_adx
+    min_adx: 20
+    minimum_hold_bars_5m: 12
+    maximum_hold_bars_5m: 576
+    cooldown_bars_5m: 12
+    trailing_stop_atr: 2.5

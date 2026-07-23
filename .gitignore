@@ -1,0 +1,29 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.vscode/
+.env
+outputs/*.csv
+outputs/*.json
+outputs/*.png
+data/*.csv
+paper/*.json
+paper/*.csv
+!data/.gitkeep
+!outputs/.gitkeep
+!paper/.gitkeep
+.DS_Store
+Thumbs.db
+# Large vendor data archives
+Kraken_OHLCVT*.zip
+data/raw/
+data/*.zip
+
+runtime/
+.env
+
+# Generated experiment artifacts (regenerable; results are captured in *_RESULTS.md)
+outputs/
+results/
