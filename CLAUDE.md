@@ -242,6 +242,50 @@ all three, added 2026-07-23. Check via CLI too if needed:
 | Expression | stock, ATR stop 1.35 / target 2.15 | stock, exit disabled (stop_atr/target_atr=100) — always full `max_hold_bars=10`, `time_exit` | 30-DTE ~5%-OTM call, real live bid/ask via yfinance, sold at 10-day hold |
 | Status | halted 2026-07-23, **resumed the same day** as a live comparison arm | active since 2026-07-23 | active since 2026-07-23 |
 
+### Intraday quote refresh (stock bots only)
+
+The two stock bots only make trading decisions once/day (after-close daily
+bar). Nothing refreshed a live price between those steps, so the dashboard
+showed an entry price and nothing else until the next day's decision —
+noticed and fixed 2026-07-23. `run_equity_paper_step.py refresh-quote`
+(separate from `step`) updates `open_position.current_price`/
+`current_price_at` only, never touches entry/exit/stop logic, on its own
+timer: `equity-quote-refresh-simpletrend.{service,timer}` and
+`equity-quote-refresh-ridge.{service,timer}`, every 15min, 13:00–21:00 UTC
+weekdays. Dashboard shows current price + unrealized % on both stock tabs
+now (previously only the calls tab had a live mark). The calls bot didn't
+need this — it already re-marks `current_mark` on every `step()` call.
+
+### Daily 7am automated checkup + email
+
+`scripts/daily_checkup.py` (`equity-daily-checkup.{service,timer}`, 07:00
+UTC daily) checks all three deployments' status, timer/service health, and
+recent journalctl errors against known failure patterns (stuck
+`pending_entry` > 1 day old, halts, stale/inactive timers, dashboard down),
+self-heals exactly one thing (re-running `step()` to advance a stuck
+`pending_entry` — the same fix applied manually the day this was built),
+and emails a summary (HTML + plain text, with a rule-based "Claude's Hot
+Take" section grounded in this doc's own validation history) to
+josephbruno189@gmail.com, cc joseph.c.bruno@lmco.com.
+
+**Deterministic Python, not an agentic session, deliberately.** First
+attempt used a headless `claude -p` call, but (a) the workspace had never
+passed Claude Code's interactive trust dialog, so its permission settings
+were ignored and it hung with no TTY to answer a prompt, and (b) spawning a
+second full-permission Claude Code instance from inside an already-running
+session is correctly refused by the sandbox classifier — not something to
+route around. A plain script covers the same checks without either problem
+and is more predictable for an unattended job.
+
+**Email delivery is SMTP, not the Gmail MCP connector** — that connector
+(used interactively) can only create drafts, not send; useless unattended
+(a test draft sat unsent in Gmail's Drafts folder). `scripts/send_email_smtp.py`
+uses `smtplib` against Gmail with an app password from
+`/home/joey/.config/btc-trend-bot/gmail_smtp.env` (not committed;
+`GMAIL_SMTP_USER`/`GMAIL_SMTP_APP_PASSWORD`/`GMAIL_SMTP_TO`/`GMAIL_SMTP_CC`).
+**Port 465 (implicit TLS) is blocked outbound on this VM; 587 (STARTTLS)
+works** — confirmed by direct `/dev/tcp` testing, not assumed.
+
 ### Why the call deployment runs on a different schedule and universe
 
 `experiments/run_equity_call_paper_step.py`, from the research branch's
