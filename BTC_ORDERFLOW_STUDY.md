@@ -90,27 +90,55 @@ sub-millisecond latency. This is the concrete, measured version of the
 out earlier — now demonstrated with real numbers instead of a general
 caveat.
 
-## Status
+## Update: latency-haircut decay curve + regime-conditional check — Tier 1 exhausted
 
-A 14-day full tick-data pull is running in the background
-(`data/orderflow/btcusdt_trades_14d.parquet`) to check whether this holds up
-on a much larger, more statistically robust sample (the pilot is only 3
-hours — real risk of it being idiosyncratic to that window) and whether
-the picture changes at a coarser bar size where realistic execution might
-actually be possible (e.g., bars sized for multi-minute rather than
-sub-second granularity, trading off signal strength against reachability).
-Funding rate (1 year) and open interest (29-day max) history are already
-downloaded and not yet analyzed as features — natural next step once the
-larger tick dataset is validated.
+`experiments/run_orderflow_latency_regime_study.py`, run on 1.55M trades
+(~1.6 days, ~30x the original 3-hour pilot; 14-day background download
+continued running past this point and is not expected to change the
+conclusion). Two follow-ups, both aimed squarely at the open question left
+by the first diagnostic: is there a *reachable* execution horizon (real
+seconds of latency, real seconds of hold time) where net-of-cost edge turns
+positive?
+
+**Latency-haircut decay curve.** Resampled trades into fixed 1-second
+buckets (so latency and hold time are both expressed in real seconds, not
+bar-counts whose duration depends on an arbitrary dollar threshold) and
+swept every combination of signal window (1–300s) × latency (0–10s) × hold
+time (1–300s) — 180 combinations. Best result found: **+0.178 bps gross**
+(5s window, 0s latency, 60s hold) — against the 12–16 bps realistic
+round-trip cost floor, that's **net −15.8 bps**, and it was the *best*
+result in the entire sweep. The moment any latency at all is introduced
+(even 1 second), the already-tiny edge erodes further, not less. There is
+no horizon in the tested space where this clears costs — not a "wrong
+parameters" problem, an "edge too small everywhere" one.
+
+**Regime-conditional check.** Does flow-imbalance predictive power
+strengthen when funding rate is extreme, or when open interest is moving
+sharply? OI-change deciles (full 0–9 granularity, hourly OI updates give
+enough distinct values even in 1.6 days): edge ranges narrowly from 0.058
+to 0.105 bps with no monotonic pattern — reads as noise, not a real
+conditioning effect. Funding-rate deciles were underpowered on this partial
+window (funding only updates every 8 hours, so 1.6 days has just ~5
+distinct funding values to bin against — `qcut` collapsed to 5 bins, not a
+null result, a genuine sample-size limitation) and would need the fuller
+14-day set to trust either way. Given OI already had full granularity and
+showed nothing, there's not much reason to expect funding conditioning
+would look qualitatively different.
 
 ## Honest read
 
-Tier 1 delivered exactly what it was supposed to: proof that a
-fundamentally different data source (order flow, not price action) *can*
-contain real, statistically overwhelming signal that pure candlestick
-features never showed all night. The catch is that the signal lives at a
-timescale where realistic transaction costs and retail execution latency
-both work against capturing it. Whether a coarser-grained version of the
-same effect (still order-flow-derived, but on bars sized for seconds-to-
-minutes rather than sub-second) survives is the open, concrete next
-question — not yet answered.
+Tier 1 delivered exactly what it was supposed to on the first pass: proof
+that a fundamentally different data source (order flow, not price action)
+*can* contain real, statistically overwhelming signal that pure
+candlestick features never showed all night. The follow-up closes the loop
+decisively in the other direction: that signal is capped at roughly
+0.1–0.2 bps gross, against a cost floor ~100x larger, across every tested
+window/latency/hold combination, with no regime found where it meaningfully
+strengthens. **Tier 1 is exhausted for finding a fast-paced tradeable
+regime** — not "needs more tuning," genuinely capped too low everywhere
+checked. The path forward, if a fast-paced regime is still worth pursuing,
+is Tier 2 (real order-book depth — pre-trade queue/liquidity information
+rather than post-trade imprint, a different economic story), which was
+deliberately deferred earlier as the expensive path (paid vendor or months
+of live collection). That tradeoff decision should be revisited with this
+result in hand, not before.
