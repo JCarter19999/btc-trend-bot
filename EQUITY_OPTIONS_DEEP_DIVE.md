@@ -113,3 +113,15 @@ cheaper ask than a full options-data vendor subscription.
 **Puts are a clean negative** — no further work warranted there absent a
 fundamentally different short-side signal (this test used the same
 weakest-momentum selector already shown not to work).
+
+## Update: live deployment resolves the spread question directly (2026-07-23)
+
+Rather than sourcing a real spread dataset, the open question got resolved
+the more direct way: `equity_v2_4` (main branch)
+`experiments/run_equity_call_paper_step.py` is now live, reading **real
+live option bid/ask quotes** from yfinance instead of assuming a spread.
+Same 30-DTE / 5%-OTM parameters, same universe, same `simple_trend`
+selection. Runs during market hours (19:00 UTC) since option quotes need a
+live session, unlike the stock deployments. See `CLAUDE.md` on `main` for
+the full deployment record and a dashboard tab
+(`/home/joey/btc-dashboard`, "📞 Call Options (paper)") to watch it.
