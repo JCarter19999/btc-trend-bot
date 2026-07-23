@@ -30,6 +30,7 @@ result isn't oversold.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from dataclasses import dataclass
@@ -47,7 +48,7 @@ from run_equity_real_data_walkforward import FEATURES, add_features, load_config
 from download_sp100_universe import SP100_SYMBOLS, BENCHMARK  # noqa: E402
 
 MAX_POSITIONS = 5
-MAX_POSITION_FRACTION = 0.5
+MAX_POSITION_FRACTION = 0.5  # default; overridden via --max-position-fraction, see main()
 HOLD_BARS = 10  # matches the deployed strategy exactly -- not re-tuned
 SLIPPAGE_BPS_EACH_SIDE = 2.0
 INITIAL_CAPITAL = 2500.0
@@ -106,7 +107,8 @@ def precompute(feature_frames: dict[str, pd.DataFrame], trading_dates: pd.Dateti
     return {"open_px": open_px, "close_px": close_px, "daily_candidates": daily_candidates}
 
 
-def simulate(pre: dict, trading_dates: pd.DatetimeIndex, *, rank_mode: str, seed: int | None = None) -> dict:
+def simulate(pre: dict, trading_dates: pd.DatetimeIndex, *, rank_mode: str, seed: int | None = None,
+             max_positions: int = MAX_POSITIONS, max_position_fraction: float = MAX_POSITION_FRACTION) -> dict:
     """rank_mode: 'simple_trend' (rank by relative_strength_20 desc) or
     'random' (random order among eligible each day, given `seed`)."""
     rng = np.random.default_rng(seed) if rank_mode == "random" else None
@@ -147,7 +149,7 @@ def simulate(pre: dict, trading_dates: pd.DatetimeIndex, *, rank_mode: str, seed
 
         # 2) fill available slots with new entries (signal today, fill at tomorrow's open)
         held_symbols = {s.symbol for s in open_slots}
-        available_slots = MAX_POSITIONS - len(open_slots)
+        available_slots = max_positions - len(open_slots)
         if available_slots > 0:
             candidates = [c for c in daily_candidates.get(today, []) if c[0] not in held_symbols]
             if candidates:
@@ -160,7 +162,7 @@ def simulate(pre: dict, trading_dates: pd.DatetimeIndex, *, rank_mode: str, seed
                 tomorrow = trading_dates[i + 1]
                 for symbol, _ in candidates[:available_slots]:
                     available_cash_fraction = 1.0 - committed_fraction
-                    fraction = min(MAX_POSITION_FRACTION, available_cash_fraction)
+                    fraction = min(max_position_fraction, available_cash_fraction)
                     if fraction < MIN_ALLOC:
                         break
                     entry_px = open_px[symbol].get(tomorrow)
@@ -213,6 +215,11 @@ def summarize(equity_path: pd.DataFrame, trades: pd.DataFrame) -> dict:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Multi-position S&P 100 portfolio study")
+    parser.add_argument("--max-positions", type=int, default=MAX_POSITIONS)
+    parser.add_argument("--max-position-fraction", type=float, default=MAX_POSITION_FRACTION)
+    args = parser.parse_args()
+
     data_dir = ROOT / "data" / "real_sp100"
     universe = tuple(dict.fromkeys(SP100_SYMBOLS))
     print(f"Building features for {len(universe)} symbols...")
@@ -225,12 +232,16 @@ def main() -> None:
     print("Precomputing eligible-candidate set (shared across all runs)...")
     pre = precompute(feature_frames, trading_dates)
 
-    print("Running simple_trend multi-position portfolio (S&P 100, max 5 positions, 50% cap)...")
-    st_result = simulate(pre, trading_dates, rank_mode="simple_trend")
+    print(f"Running simple_trend multi-position portfolio (S&P 100, max {args.max_positions} positions, "
+          f"{args.max_position_fraction*100:.0f}% cap)...")
+    st_result = simulate(pre, trading_dates, rank_mode="simple_trend",
+                          max_positions=args.max_positions, max_position_fraction=args.max_position_fraction)
     print(json.dumps(st_result, indent=2, default=str))
 
     print(f"\nRunning {N_RANDOM_SEEDS}-seed random-selection control (same capital rules)...")
-    random_results = [simulate(pre, trading_dates, rank_mode="random", seed=s) for s in range(N_RANDOM_SEEDS)]
+    random_results = [simulate(pre, trading_dates, rank_mode="random", seed=s,
+                                max_positions=args.max_positions, max_position_fraction=args.max_position_fraction)
+                       for s in range(N_RANDOM_SEEDS)]
     random_bps = [r["mean_trade_return_bps"] for r in random_results if r.get("trades", 0) > 0]
     pct = float((np.array(random_bps) < st_result["mean_trade_return_bps"]).mean() * 100) if random_bps else None
 
@@ -240,7 +251,10 @@ def main() -> None:
 
     out = ROOT / "outputs" / "equity_multi_position_sp100_study"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "summary.json").write_text(json.dumps({
+    tag = f"maxpos{args.max_positions}_frac{int(args.max_position_fraction*100)}"
+    (out / f"summary_{tag}.json").write_text(json.dumps({
+        "max_positions": args.max_positions,
+        "max_position_fraction": args.max_position_fraction,
         "simple_trend": st_result,
         "random_mean_bps": float(np.mean(random_bps)) if random_bps else None,
         "random_std_bps": float(np.std(random_bps)) if random_bps else None,
@@ -249,7 +263,7 @@ def main() -> None:
             "trades": 188, "trades_per_year": 188 / 8.5, "mean_trade_return_bps": 243.3, "max_drawdown": 0.221,
         },
     }, indent=2, default=str))
-    print(f"\nWritten to {out / 'summary.json'}")
+    print(f"\nWritten to {out / f'summary_{tag}.json'}")
 
 
 if __name__ == "__main__":
