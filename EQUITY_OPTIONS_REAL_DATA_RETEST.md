@@ -99,6 +99,42 @@ promising options finding — a clean, decisive result, and the strongest
 validation yet of why every prior options doc withheld promotion pending
 real data.
 
+## 3) European lead signal: SPY options vs. shares — real leverage amplification, cleanly positive
+
+Same DAX-top-quartile signal dates as the validated backtest
+(`EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt`), same ~9:30/10:30 ET
+entry/exit, priced with real intraday 1-minute SPY option quotes
+(`option_history_quote`, not EOD data — the 1-hour hold needs intraday
+granularity). 116 top-quartile days, **0 skipped for either DTE variant**
+— unlike the volatile-universe equities, SPY 0DTE/1DTE liquidity is deep
+enough that every single signal day had a real, tradeable quote.
+
+| | Trades | Win rate | Expectancy/trade | Profit factor | Total return |
+|---|---|---|---|---|---|
+| SPY shares (reference) | 116 | 61.2% | 95.7 bps | — | +12.9% |
+| **SPY ATM 0DTE (real)** | 116 | 45.7% | **1263.8 bps** | 1.69 | **+146.6%** |
+| **SPY ATM 1DTE (real)** | 116 | 47.4% | **764.2 bps** | 1.70 | **+88.6%** |
+
+This is the cleanest positive real-data options result of the night, and
+the opposite outcome from the volatility breakout straddle. Lower win
+rate than shares (46-47% vs 61%, exactly the "direction alone isn't
+enough, the move has to be big enough" pattern seen in the calls deep
+dive too) but the payoff asymmetry more than compensates — real leverage
+amplification on a signal that was already independently validated
+(out-of-sample split, random-shuffle control, doesn't concentrate on
+FOMC days) before any option pricing was involved. 0DTE outperforms
+1DTE, consistent with more gamma/leverage per correct call within the
+same 1-hour window.
+
+**One real caveat before treating this as decided**: a bug was caught and
+fixed mid-run here — the first attempt returned 0/116 priced on both
+variants due to a timezone mismatch (`build_dataset()`'s index is
+tz-naive, the spot-price lookup index was tz-aware UTC, so every lookup
+silently returned `None` instead of raising). Verified the fix on a
+single manual trade before re-running the full 232-call batch, and the
+corrected run shows 100% success rate, which is itself a good sign the
+fix was complete rather than partial.
+
 ## What's still queued
 
 - European lead signal (SPY shares vs. 0DTE/1DTE/0.40-delta options, +
