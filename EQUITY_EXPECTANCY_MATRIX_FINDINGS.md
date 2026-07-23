@@ -103,6 +103,59 @@ underneath (candidate-generation rules, exit mechanics) independent of any
 learned model, or whether the pool's positive expectancy is itself just this
 specific 2018–2026 mega-cap tech bull run.
 
+## Update: candidate-edge / exit-edge decomposition (100 seeds each)
+
+`experiments/run_equity_candidate_exit_decomposition.py`. Isolates where the
+pool's ~35-55 bps mean expectancy actually comes from.
+
+### Candidate edge: does `build_candidates`'s mask matter?
+
+| Pool | Mean expectancy | Win rate |
+|---|---|---|
+| Mask-filtered (current) | +50.3 bps | 47.5% |
+| Unrestricted (any day/symbol, no mask) | +55.8 bps | 48.0% |
+
+**No.** The mask (`relative_volume > 0.6`, `atr_pct > 0`,
+`abs(ema_spread_atr) < 8`, `return_20 > -0.25`) is a liquidity/sanity filter,
+not a selector — trading literally any day on any of the four symbols does
+at least as well. It contributes nothing beyond restricting to
+"tradeable-looking" bars.
+
+### Exit edge: does the ATR stop/target mechanism matter?
+
+Same (symbol, day) selections across all four rows — only the exit rule
+changes:
+
+| Exit rule | Mean expectancy | Win rate |
+|---|---|---|
+| Buy next open, sell next close (1-day) | **−0.6 bps** | 50.6% |
+| Fixed 5-day hold, no stop/target | +56.1 bps | 55.5% |
+| Fixed 10-day hold, no stop/target | **+132.8 bps** | 57.9% |
+| Current ATR stop (1.35) / target (2.15) / max 10-day hold | +50.3 bps | 47.5% |
+
+This is the sharpest finding in the whole exercise: **the pure 1-day return
+has ~zero expectancy** (confirming there's no short-horizon directional
+signal being captured at all, by anyone), and expectancy climbs steadily
+with hold duration. But **holding a fixed 10 days with no stop-loss or
+profit-taking beats the current ATR-managed exit by more than 2x** (132.8
+vs. 50.3 bps) on the identical entries. The "risk management" layer — a
+1.35 ATR stop that can cut a trade short in 46% of raw-pool cases (see the
+exit_reason breakdown earlier in this doc) — is trimming more upside than
+it protects on this specific universe/period, because these four symbols
+were in a historically exceptional, low-mean-reversion uptrend.
+
+### What this means
+
+There is no evidence of alpha anywhere in this pipeline — not in candidate
+selection (mask does nothing), not in symbol/day timing (Ridge underperforms
+random), not in exit timing (ATR management underperforms just holding).
+What positive expectancy exists is **pure medium-horizon directional drift
+in a small basket of exceptional stocks during an exceptional period**
+(AAPL/MSFT/NVDA/TSLA buy-and-hold 2018–2026: +709% / +396% / +4,208% /
++1,650%, vs. SPY +217%). The 1-day-hold result is the control that nails
+this down: if there were a real short-horizon signal (from Ridge, Kalman, or
+anything else), it would show up there, and it doesn't.
+
 ## Not yet done (scoped down for time; flagged, not skipped)
 
 - Only 50 random seeds, not the 100+ a tighter confidence interval would
@@ -121,15 +174,28 @@ specific 2018–2026 mega-cap tech bull run.
   (e.g., by inspecting whether `predicted_return` correlates negatively
   with `realized net_return` in a rank-correlation sense).
 
-## Implication for the live deployment
+## Implication for the live deployment — action taken
 
-`equity_v2_4` (main branch) is currently running Phase 2 shadow paper
-trading on this same Ridge model against real daily data via
-`equity-paper-yfinance.timer`. It's paper-only — no live orders, no capital
-at risk — so there's no urgent action required, but this result means the
-model backing that deployment has not demonstrated the edge its original
-promotion was based on, once the backtest that promotion relied on is
-corrected. Worth a deliberate decision (not a unilateral one) on whether to
-keep it running as a monitoring exercise, pause it, or treat it as itself
-another data point pending a version of this expectancy-matrix check that
-also covers the live ledger's realized trades.
+`equity_v2_4` (main branch) was running Phase 2 shadow paper trading on this
+same Ridge model against real daily data via `equity-paper-yfinance.timer`.
+Given full authorization from Joey (2026-07-23) to update the live
+deployment if the research pointed that way: **there is no validated
+candidate to promote in Ridge's place.** Kalman, simple_trend, and literal
+random selection all land in the same statistical neighborhood as each
+other (see the expectancy table above) — none of them is a demonstrated
+improvement, they're just different random draws from a pool whose
+positive expectancy comes entirely from medium-horizon drift in an
+exceptional four-stock bull-market basket, not from any selection
+mechanism. Promoting any of them in Ridge's place would repeat the exact
+mistake this whole exercise was set up to catch.
+
+The correct action is therefore not a swap but a **halt**: the live paper
+deployment was stopped via its own `halt` control
+(`experiments/run_equity_paper_step.py halt`, which persists a halted flag
+in the ledger and is fully reversible via `resume` — no systemd units,
+scheduling, or ledger history were touched). See `LIVE_DEPLOYMENT.md` /
+`CLAUDE.md` in the main branch for the halt record and rationale. Resuming
+it (or promoting anything new) should require a candidate that beats the
+1-day-hold / 10-day-fixed-hold / random-selection controls established here
+by a margin outside their own seed-to-seed variance — not just "looks
+profitable."
