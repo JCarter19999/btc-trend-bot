@@ -220,6 +220,47 @@ Legacy CLI entry points (BTC lineage): `btc-trend-bot` (subcommands: `download`,
 `deploy-status`, `deploy-halt`, `deploy-resume`, `validate-short-overlay`,
 `diagnose-gaps`, `data-status`) and `btc-v1`.
 
+## ⚠ Live paper deployment HALTED (2026-07-23) — Ridge failed re-validation
+
+`btc-trend-bot ... status` / `experiments/run_equity_paper_step.py status`
+will show `"halted": true`. This is deliberate, not an outage. Full detail
+in `EQUITY_KALMAN_ONLINE_REGRESSION.md` and `EQUITY_EXPECTANCY_MATRIX_FINDINGS.md`
+on the `research` branch (`/home/joey/equity_v2_4_research`) — summary:
+
+`simulate_capital` in `run_equity_real_data_walkforward.py` (the backtest
+harness every promotion decision, including this model's original one, was
+based on) has a real bug: it processes selected trades sequentially without
+checking whether the previous trade's exit_time has passed, so 77.3% of
+trades in practice overlap the prior one, implicitly running several
+positions funded as if capital were free. (This bug does **not** affect
+`run_equity_paper_step.py` itself — it correctly tracks one `open_position`
+at a time — so the halt is about the *model's validity*, not a live-trading
+integrity issue.) Re-running the promotion comparison with that fixed and
+sizing decoupled from compounding: real-label Ridge lands in the 2nd–10th
+percentile of a 50-seed random-selection distribution (negative-to-flat
+expectancy per trade) — worse than most random controls, including its own
+shuffled-label version. A follow-up decomposition found the pool's positive
+expectancy (~50 bps/trade) comes entirely from medium-horizon drift in an
+exceptional AAPL/MSFT/NVDA/TSLA bull run (buy-and-hold 2018–2026: +709% /
++396% / +4,208% / +1,650% vs. SPY +217%) — not from candidate selection
+(mask-filtered vs. unrestricted pool: no difference), not from symbol/day
+timing (Ridge underperforms random), and not from the ATR exit mechanics
+(a naive fixed 10-day hold beats the ATR-managed exit by >2x on identical
+entries).
+
+Halted via `experiments/run_equity_paper_step.py --config
+config/settings_equity_paper_yfinance.yaml halt --reason "..."` — this sets
+a persistent flag in the SQLite ledger (`runtime/equity_yfinance_paper.sqlite3`)
+that short-circuits `run_step()` entirely, including management of the one
+`pending_entry` position that was open at halt time (AAPL, never filled).
+Fully reversible: `... resume` clears the flag; the systemd timer keeps
+firing on schedule either way (`halted` is just a fast no-op branch inside
+`run_step()`, not a disabled timer). No ledger history was touched. Do not
+`resume` without a candidate that beats the random/shuffled-label/fixed-hold
+controls in the research-branch docs above by a margin outside their own
+seed-to-seed variance — "looks profitable" was exactly what led to Ridge's
+original promotion, and it wasn't sufficient.
+
 ## Deployment roadmap (not yet live)
 
 Phase 1 historical walk-forward validation → Phase 2 **shadow deployment** (log
