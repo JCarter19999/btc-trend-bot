@@ -1,0 +1,120 @@
+ASIAN MARKETS + OPTIONS OVERLAY -- EXTENSIONS TO THE EUROPEAN LEAD SIGNAL
+=============================================================================
+2026-07-23, research branch. Two follow-ups to
+EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt: does the same lead-lag logic
+extend to Asian markets (which finish their whole session even earlier
+than Europe opens), and can the DAX-direction signal be expressed via
+SPY/QQQ options instead of shares for more leverage.
+
+PART 1: ASIAN MARKETS -- A REAL BUT OPPOSITE-SIGN EFFECT
+-------------------------------------------------------------
+Nikkei 225, Hang Seng, and Shanghai Composite all finish their full
+session (open to close) well before Europe even opens, let alone before
+the US -- unlike Europe's partial-session-before-cutoff signal, these
+use the whole day's return.
+
+Individual correlation with SPY's first hour (2bp-cost-equivalent
+sample, ~440-450 days):
+
+  Symbol               Direction corr   Direction pctile   Magnitude corr   Magnitude pctile
+  Nikkei 225            -0.090            2.4th              0.229            100.0
+  Hang Seng              -0.086            3.6th              0.143             99.8
+  Shanghai Composite     -0.104            1.8th              0.103             98.2
+
+Every one of these is statistically real (shuffle-control percentiles
+confirm it isn't noise) -- but DIRECTION IS NEGATIVE, the opposite sign
+from DAX's +0.277. A big up-day in Asia weakly precedes a DOWN move in
+the US first hour, not an up move. Magnitude stays positive across all
+three, same as Europe -- size of the Asian move still predicts size of
+the US first-hour move, just not which way.
+
+Naively averaging Asia + Europe into one combined signal cancels the
+directional components out (combined dir_corr -0.019, not significant,
+34.9th percentile) and the resulting backtest is flat-to-negative
+(-0.58bps/trade every day, -2.11bps/trade top-quartile at 2bp cost).
+Averaging the two regions is the wrong way to combine them.
+
+BETTER COMBINATION: use Asia's magnitude (real signal) as a conviction
+filter on DAX's direction (real signal), without importing Asia's
+contrarian direction:
+
+  DAX-direction-only:                     win 53.0%, mean 3.64bps, Sharpe 1.76
+  DAX-direction, gated by Asia magnitude:  win 57.4%, mean 5.75bps, Sharpe 2.56
+  (gated on Asia's move being above its own median; trade count roughly halves)
+
+This is a real, meaningful improvement -- Sharpe rises from 1.76 to 2.56
+by using Asia only as a "something is moving today" filter, not a
+direction vote. Read Asia's contrarian direction finding as a genuinely
+interesting open question, not solved here: plausibly overnight moves
+that occurred many hours before US open have more time to partially
+mean-revert than same-morning European moves do, but that's a
+hypothesis, not something tested directly.
+
+PART 2: OPTIONS OVERLAY (SPY/QQQ, SAME-DAY 0DTE-STYLE)
+------------------------------------------------------------
+Expresses the DAX-direction signal via a same-day call (signal positive)
+or put (signal negative), ATM strike, bought at US open and sold an hour
+later -- SPY and QQQ both have real daily option expirations, so this is
+a realistic structure, not a contrived one.
+
+IMPORTANT NEW CAVEAT, on top of every other options caveat in this
+project: 0DTE Black-Scholes-off-realized-vol pricing is the LEAST
+reliable pricing regime tested here. Real 0DTE dynamics (extreme gamma,
+dealer hedging flows, pinning toward round strikes near expiry) are not
+well captured by Black-Scholes at all -- BS assumes smooth continuous
+price evolution and constant vol, exactly what 0DTE options violate
+hardest. Treat everything below as a generous upper-bound sketch of what
+leverage COULD do to this edge, not a real backtest of a real 0DTE
+strategy.
+
+Priced with years-to-expiry as a FRACTION OF A DAY (6.5 hours to close
+at entry, 5.5 remaining at the 1-hour exit) and realized vol from
+trailing HOURLY bars (not daily closes), annualized via
+sqrt(252 x 6.5 trading hours), not sqrt(252).
+
+  SPY 0DTE, 5% spread:  462 trades, win 48.1%, mean +37.3%/trade, PF 2.27, maxDD 19.6%, total return +1724%
+  SPY 0DTE, 10% spread: 462 trades, win 45.5%, mean +24.2%/trade, PF 1.76, maxDD 22.8%, total return +1117%
+  QQQ 0DTE, 5% spread:  462 trades, win 44.6%, mean +37.5%/trade, PF 2.09, maxDD 17.0%, total return +1733%
+  QQQ 0DTE, 10% spread: 462 trades, win 42.6%, mean +24.3%/trade, PF 1.67, maxDD 25.3%, total return +1125%
+
+Checked the raw per-trade numbers directly before trusting this (same
+process that caught the tail-hedge and debit-spread bugs earlier
+tonight) -- entry/exit premiums land in a realistic dollar range
+($0.22-$8.77 on a SPY-scale underlying), and the shape is qualitatively
+correct for real 0DTE behavior: losers decay to near-zero within the
+hour (theta burn is genuinely that fast this close to expiry) while
+winners can run several hundred percent on a leveraged gamma move. Win
+rate is LOWER than the underlying equity signal (48% vs. the equity
+strategy's 53%) because being directionally right isn't enough for a
+0DTE option -- the move has to be big enough, fast enough, to overcome
+theta within a single hour. The positive expectancy comes entirely from
+payoff asymmetry (capped losses near -100%, occasional 500-700% winners),
+not from a high hit rate.
+
+Read the "+1724% total return" number as a qualitative confirmation that
+leverage amplifies a real directional edge (expected), not as a real
+return estimate -- real 0DTE bid-ask spreads (which can be wide as a %
+of premium away from the most liquid at-the-money strikes, especially
+in the first minutes of trading), actual fill slippage, and pin/
+assignment risk near the money would all eat into this, likely
+substantially, in ways this model cannot honestly estimate without real
+quote data.
+
+VERDICT
+--------
+Asian markets add a real, usable refinement (magnitude-gating) once
+combined correctly -- worth keeping. The contrarian directional
+finding is a genuinely interesting open question for a future session,
+not something to trade on its own without understanding the mechanism
+better. The options overlay confirms the directional edge is real
+enough to survive leveraging, which is useful signal, but the specific
+numbers here are the least trustworthy of anything produced tonight --
+0DTE pricing without real quotes is closer to a sanity check than a
+strategy proposal. If this whole thread gets pursued toward paper
+trading, the equity version (real SPY/shares, real cost model already
+validated) is the one to actually deploy; the options version needs
+real 0DTE quote data before it's more than a "the leverage direction
+makes sense" confirmation.
+
+Scripts: experiments/run_asian_lead_us_first_hour_study.py,
+experiments/run_european_signal_options_overlay.py
