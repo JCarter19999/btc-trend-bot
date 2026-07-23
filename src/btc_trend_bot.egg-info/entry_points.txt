@@ -1,3 +1,0 @@
-[console_scripts]
-btc-trend-bot = btc_trend_bot.cli:main
-btc-v1 = btc_trend_bot.v1.cli:main

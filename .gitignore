@@ -27,3 +27,4 @@ runtime/
 # Generated experiment artifacts (regenerable; results are captured in *_RESULTS.md)
 outputs/
 results/
+*.egg-info/
