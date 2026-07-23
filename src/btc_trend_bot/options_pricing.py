@@ -27,6 +27,26 @@ from __future__ import annotations
 import numpy as np
 from scipy.stats import norm
 
+# Real options markets don't quote sub-tick prices -- a deep-OTM, low-vol
+# contract that Black-Scholes prices at a fraction of a cent (e.g. $0.003 on
+# a $400 spot at 10% realized vol, 45 DTE, 10% OTM -- an entirely realistic
+# input combination for a calm-market SPY put) would never actually trade
+# there in practice; exchanges enforce minimum tick/quote increments, and
+# market makers don't quote genuinely sub-nickel deep-OTM options tightly.
+# Computing a % return off a premium that's an artifact of the model having
+# no floor (not a numerical bug in the BS formula itself -- it's correctly
+# computing a vanishingly small but nonzero value) produces nonsense returns
+# like "355,743x" when the underlying later moves and the option is repriced
+# at a normal cent-scale premium. Found this the hard way (2026-07-23) when a
+# tail-hedge backtest reported an average winning trade of +35,574,300%.
+# Below this floor, a trade is treated as untradeable (net_return = NaN),
+# not floored-and-kept -- flooring the price would still misstate the % move.
+MIN_TRADABLE_PREMIUM = 0.05
+
+
+def _below_floor(*premiums: float) -> bool:
+    return any(not np.isfinite(p) or p < MIN_TRADABLE_PREMIUM for p in premiums)
+
 
 def realized_vol(close: "np.ndarray | list[float]", window: int) -> "np.ndarray":
     """Annualized trailing realized volatility from daily closes, as a numpy
@@ -77,10 +97,73 @@ def synthetic_call_trade(
     exit_premium = bs_call_price(exit_spot, strike, remaining_dte / 365, exit_vol, risk_free_rate)
     exit_fill = exit_premium * (1 - spread_frac_of_premium)  # receive less than mid to sell
 
-    if entry_fill <= 0:
+    if _below_floor(entry_fill):
         return {"entry_premium": entry_fill, "exit_premium": exit_fill, "net_return": np.nan, "strike": strike}
     net_return = exit_fill / entry_fill - 1
     return {"entry_premium": entry_fill, "exit_premium": exit_fill, "net_return": net_return, "strike": strike}
+
+
+def synthetic_call_debit_spread_trade(
+    entry_spot: float, entry_vol: float, exit_spot: float, exit_vol: float,
+    dte_at_entry: int, days_held: int, long_moneyness: float = 1.0, short_moneyness: float = 1.10,
+    spread_frac_of_premium: float = 0.05, risk_free_rate: float = 0.04,
+) -> dict:
+    """Bull call debit spread: long a call at `long_moneyness`, short a call
+    at `short_moneyness` (> long_moneyness), same expiry. Net debit = long
+    premium - short premium; net_return is on that net debit. Spread cost is
+    charged on BOTH legs, both directions (4 crossings total, matching a real
+    2-leg spread's execution cost) -- if anything this understates real cost
+    since it doesn't add a separate per-leg commission (see the sleeve-ladder
+    doc's cost-realism section for where that's charged instead)."""
+    long_strike = entry_spot * long_moneyness
+    short_strike = entry_spot * short_moneyness
+
+    long_entry = bs_call_price(entry_spot, long_strike, dte_at_entry / 365, entry_vol, risk_free_rate) * (1 + spread_frac_of_premium)
+    short_entry = bs_call_price(entry_spot, short_strike, dte_at_entry / 365, entry_vol, risk_free_rate) * (1 - spread_frac_of_premium)
+    net_debit = long_entry - short_entry
+
+    remaining_dte = max(dte_at_entry - days_held, 0)
+    long_exit = bs_call_price(exit_spot, long_strike, remaining_dte / 365, exit_vol, risk_free_rate) * (1 - spread_frac_of_premium)
+    short_exit = bs_call_price(exit_spot, short_strike, remaining_dte / 365, exit_vol, risk_free_rate) * (1 + spread_frac_of_premium)
+    net_credit = long_exit - short_exit
+
+    if _below_floor(long_entry, net_debit):
+        return {"net_debit": net_debit, "net_credit": net_credit, "net_return": np.nan}
+    # A debit spread's max loss is capped at the net debit paid, by
+    # construction (long the near strike, short the far strike -- you can
+    # never owe more than you paid). When both exit legs are tiny (both
+    # expiring far OTM), the entry/exit spread markup is applied with
+    # OPPOSITE sign to the long vs. short leg, which can flip their
+    # ordering (short_exit > long_exit) and produce net_credit < 0 --
+    # a modeling artifact of the markup, not a real payoff a defined-risk
+    # spread can produce. Clamp to the true economic floor rather than let
+    # a few near-worthless-leg trades report losses of -1000%+.
+    net_return = max(net_credit / net_debit - 1, -1.0)
+    return {"net_debit": net_debit, "net_credit": net_credit, "net_return": net_return}
+
+
+def synthetic_straddle_trade(
+    entry_spot: float, entry_vol: float, exit_spot: float, exit_vol: float,
+    dte_at_entry: int, days_held: int, moneyness: float = 1.0,
+    spread_frac_of_premium: float = 0.05, risk_free_rate: float = 0.04,
+) -> dict:
+    """Long ATM (by default) straddle: call + put, same strike/expiry.
+    Direction-agnostic -- profits from realized move exceeding what was
+    priced in (entry_vol), loses to time decay if the underlying sits
+    still. Spread charged on all 4 crossings (2 legs x entry/exit)."""
+    strike = entry_spot * moneyness
+    call_entry = bs_call_price(entry_spot, strike, dte_at_entry / 365, entry_vol, risk_free_rate) * (1 + spread_frac_of_premium)
+    put_entry = bs_put_price(entry_spot, strike, dte_at_entry / 365, entry_vol, risk_free_rate) * (1 + spread_frac_of_premium)
+    entry_premium = call_entry + put_entry
+
+    remaining_dte = max(dte_at_entry - days_held, 0)
+    call_exit = bs_call_price(exit_spot, strike, remaining_dte / 365, exit_vol, risk_free_rate) * (1 - spread_frac_of_premium)
+    put_exit = bs_put_price(exit_spot, strike, remaining_dte / 365, exit_vol, risk_free_rate) * (1 - spread_frac_of_premium)
+    exit_premium = call_exit + put_exit
+
+    if _below_floor(entry_premium):
+        return {"entry_premium": entry_premium, "exit_premium": exit_premium, "net_return": np.nan}
+    return {"entry_premium": entry_premium, "exit_premium": exit_premium, "net_return": exit_premium / entry_premium - 1}
 
 
 def synthetic_put_trade(
@@ -96,7 +179,7 @@ def synthetic_put_trade(
     exit_premium = bs_put_price(exit_spot, strike, remaining_dte / 365, exit_vol, risk_free_rate)
     exit_fill = exit_premium * (1 - spread_frac_of_premium)
 
-    if entry_fill <= 0:
+    if _below_floor(entry_fill):
         return {"entry_premium": entry_fill, "exit_premium": exit_fill, "net_return": np.nan, "strike": strike}
     net_return = exit_fill / entry_fill - 1
     return {"entry_premium": entry_fill, "exit_premium": exit_fill, "net_return": net_return, "strike": strike}
