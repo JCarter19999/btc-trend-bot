@@ -16,16 +16,22 @@ import argparse
 import os
 import smtplib
 import sys
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-def send(subject: str, body: str, to: str | None = None) -> None:
+def send(subject: str, body: str, to: str | None = None, html_body: str | None = None) -> None:
     user = os.environ["GMAIL_SMTP_USER"]
     app_password = os.environ["GMAIL_SMTP_APP_PASSWORD"]
     recipient = to or os.environ["GMAIL_SMTP_TO"]
     cc = [addr.strip() for addr in os.environ.get("GMAIL_SMTP_CC", "").split(",") if addr.strip()]
 
-    msg = MIMEText(body, "plain")
+    if html_body:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+    else:
+        msg = MIMEText(body, "plain")
     msg["Subject"] = subject
     msg["From"] = user
     msg["To"] = recipient
@@ -43,12 +49,14 @@ def send(subject: str, body: str, to: str | None = None) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Send a plain-text email via Gmail SMTP")
     parser.add_argument("--subject", required=True)
-    parser.add_argument("--body-file", help="Path to read the body from (default: stdin)")
+    parser.add_argument("--body-file", help="Path to read the plain-text body from (default: stdin)")
+    parser.add_argument("--html-body-file", help="Optional path to an HTML alternative body")
     parser.add_argument("--to", help="Override recipient (default: GMAIL_SMTP_TO)")
     args = parser.parse_args()
 
     body = open(args.body_file).read() if args.body_file else sys.stdin.read()
-    send(args.subject, body, args.to)
+    html_body = open(args.html_body_file).read() if args.html_body_file else None
+    send(args.subject, body, args.to, html_body)
     print(f"Sent: {args.subject!r} to {args.to or os.environ['GMAIL_SMTP_TO']}")
 
 
