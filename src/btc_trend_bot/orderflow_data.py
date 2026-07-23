@@ -43,28 +43,57 @@ def download_trades_range(
     batch_limit: int = 1000,
     checkpoint_every: int = 50,
 ) -> Path:
-    """Paginated historical trade download, deduplicated by trade id,
-    checkpointed to parquet every `checkpoint_every` batches so a long pull
-    can be safely interrupted and resumed (re-running picks up from the
-    last saved trade's timestamp)."""
+    """Paginated historical trade download, checkpointed so a long pull can
+    be safely interrupted and resumed (re-running picks up from the last
+    saved trade's timestamp).
+
+    Writes each checkpoint's NEW rows to its own small part file
+    (`{stem}_parts/part_NNNNNN.parquet`) instead of repeatedly reading the
+    ENTIRE accumulated dataset back into memory to concat and rewrite --
+    that was the original design, and it OOM-killed a 60-day pull on this
+    VM's 1.9GB RAM at ~8.6M rows / 190MB (confirmed via dmesg, 2026-07-23):
+    every checkpoint reloaded the whole growing file, so memory pressure
+    scaled with total downloaded size, not batch size, and grew every
+    checkpoint for the life of the run. Resuming only reads the LAST part
+    file (to find the resume timestamp), never the full history.
+
+    Returns the parts directory. `orderflow_features.load_trades()` reads
+    a directory of parquet files as one dataset natively (pyarrow), so
+    downstream code doesn't need a separate consolidation step -- point it
+    at the parts directory instead of a single file.
+    """
     exchange = _get_binance()
     output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    parts_dir = output_path.parent / f"{output_path.stem}_parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
 
     start_ms = exchange.parse8601(start)
     end_ms = exchange.parse8601(end)
 
-    existing = pd.DataFrame()
     since = start_ms
-    if output_path.exists():
-        existing = pd.read_parquet(output_path)
-        if len(existing):
-            since = int(existing["timestamp"].max()) + 1
-            print(f"Resuming from checkpoint: {len(existing):,} trades already saved, "
-                  f"continuing from {pd.Timestamp(since, unit='ms', tz='UTC')}")
+    existing_parts = sorted(parts_dir.glob("part_*.parquet"))
+    total_existing = 0
+    part_index = 0
+    if existing_parts:
+        last_part = pd.read_parquet(existing_parts[-1])
+        if len(last_part):
+            since = int(last_part["timestamp"].max()) + 1
+        total_existing = sum(len(pd.read_parquet(p, columns=["id"])) for p in existing_parts)
+        part_index = len(existing_parts)
+        print(f"Resuming from checkpoint: {total_existing:,} trades already saved across "
+              f"{len(existing_parts)} part files, continuing from {pd.Timestamp(since, unit='ms', tz='UTC')}")
+    elif output_path.exists():
+        # One-time migration from the old single-growing-file layout.
+        print(f"Migrating legacy single-file checkpoint {output_path} to part-file layout...")
+        legacy = pd.read_parquet(output_path)
+        if len(legacy):
+            legacy.to_parquet(parts_dir / "part_000000.parquet", index=False)
+            since = int(legacy["timestamp"].max()) + 1
+            total_existing = len(legacy)
+            part_index = 1
+        del legacy
 
     rows: list[dict] = []
-    seen_ids: set = set(existing["id"].tolist()) if len(existing) and "id" in existing.columns else set()
     batch_count = 0
     total_new = 0
 
@@ -72,14 +101,15 @@ def download_trades_range(
         batch = exchange.fetch_trades(symbol, since=since, limit=batch_limit)
         if not batch:
             break
-        new_rows = [
-            {"id": t["id"], "timestamp": t["timestamp"], "datetime": t["datetime"],
-             "price": t["price"], "amount": t["amount"], "side": t["side"],
-             "cost": t.get("cost", t["price"] * t["amount"])}
-            for t in batch if t["id"] not in seen_ids and t["timestamp"] < end_ms
-        ]
-        for r in new_rows:
-            seen_ids.add(r["id"])
+        seen_in_batch: set = set()
+        new_rows = []
+        for t in batch:
+            if t["timestamp"] >= end_ms or t["id"] in seen_in_batch:
+                continue
+            seen_in_batch.add(t["id"])
+            new_rows.append({"id": t["id"], "timestamp": t["timestamp"], "datetime": t["datetime"],
+                              "price": t["price"], "amount": t["amount"], "side": t["side"],
+                              "cost": t.get("cost", t["price"] * t["amount"])})
         rows.extend(new_rows)
         total_new += len(new_rows)
 
@@ -89,28 +119,21 @@ def download_trades_range(
         since = last_ts + 1
         batch_count += 1
 
-        if batch_count % checkpoint_every == 0:
-            _flush(rows, existing, output_path)
-            existing = pd.read_parquet(output_path)
+        if batch_count % checkpoint_every == 0 and rows:
+            part_path = parts_dir / f"part_{part_index:06d}.parquet"
+            pd.DataFrame(rows).to_parquet(part_path, index=False)
+            part_index += 1
+            print(f"  checkpoint: +{len(rows):,} trades -> {part_path.name}, "
+                  f"at {pd.Timestamp(since, unit='ms', tz='UTC')} ({total_existing + total_new:,} total)")
             rows = []
-            print(f"  checkpoint: {len(existing):,} total trades saved, "
-                  f"at {pd.Timestamp(since, unit='ms', tz='UTC')}")
 
     if rows:
-        _flush(rows, existing, output_path)
+        part_path = parts_dir / f"part_{part_index:06d}.parquet"
+        pd.DataFrame(rows).to_parquet(part_path, index=False)
 
-    final = pd.read_parquet(output_path)
-    print(f"Done: {len(final):,} trades saved to {output_path} "
+    print(f"Done: {total_existing + total_new:,} trades saved across part files in {parts_dir} "
           f"({total_new:,} new this run)")
-    return output_path
-
-
-def _flush(new_rows: list[dict], existing: pd.DataFrame, path: Path) -> None:
-    if not new_rows:
-        return
-    combined = pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True) if len(existing) else pd.DataFrame(new_rows)
-    combined = combined.drop_duplicates(subset="id").sort_values("timestamp").reset_index(drop=True)
-    combined.to_parquet(path, index=False)
+    return parts_dir
 
 
 def download_funding_rate_history(symbol: str, start: str, output_path: str | Path) -> Path:
