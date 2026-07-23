@@ -1,0 +1,13 @@
+[Unit]
+Description=European lead-signal shadow paper entry (SPY/QQQ, no live orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=joey
+Group=joey
+WorkingDirectory=/home/joey/equity_v2_4
+ExecStart=/home/joey/equity_v2_4/.venv/bin/python experiments/run_european_signal_shadow_step.py step-entry
+TimeoutStartSec=120
+Nice=10

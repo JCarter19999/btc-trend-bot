@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekdays 13:32 UTC (~2min after US open): European lead-signal shadow entry
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 13:32:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target

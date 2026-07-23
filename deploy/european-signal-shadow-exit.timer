@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekdays 14:32 UTC (one hour after entry): European lead-signal shadow exit
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 14:32:00 UTC
+Persistent=false
+
+[Install]
+WantedBy=timers.target
