@@ -53,6 +53,20 @@ class CallDeploymentConfig:
     target_dte: int
     hold_days: int
     strike_moneyness: float
+    base_capital: float
+    premium_fraction: float
+
+    @property
+    def premium_budget(self) -> float:
+        """Dollars of premium actually put at risk per trade -- NOT the same
+        as base_capital. base_capital ($2,500, matching the other two
+        deployments' initial_capital) is the account this is scaled against;
+        only premium_fraction (10%) of it is ever risked on a single call,
+        the rest is conceptually uninvested cash. This is the number that
+        determines P&L -- see the dashboard's "Base capital" and "Premium
+        budget / trade" metrics, which read directly from this config, not a
+        hardcoded constant."""
+        return self.base_capital * self.premium_fraction
 
 
 def load_deployment_config(path: Path) -> tuple[CallDeploymentConfig, "walkforward.BacktestConfig"]:
@@ -67,6 +81,8 @@ def load_deployment_config(path: Path) -> tuple[CallDeploymentConfig, "walkforwa
         target_dte=int(paper.get("target_dte", 30)),
         hold_days=int(paper.get("hold_days", 10)),
         strike_moneyness=float(paper.get("strike_moneyness", 1.05)),
+        base_capital=float(paper.get("base_capital", strategy_cfg.initial_capital)),
+        premium_fraction=float(paper.get("premium_fraction", 0.10)),
     )
     return deploy_cfg, strategy_cfg
 
@@ -253,20 +269,20 @@ class CallPaperLedger:
 # Step logic
 # --------------------------------------------------------------------------- #
 
-PREMIUM_BUDGET = 250.0  # fixed premium risk per trade -- matches the deep dive's convention
-
-
-def _safety_allows_new_entry(trades: pd.DataFrame, cfg: "walkforward.BacktestConfig") -> tuple[bool, str]:
+def _safety_allows_new_entry(trades: pd.DataFrame, cfg: "walkforward.BacktestConfig",
+                              deploy_cfg: CallDeploymentConfig) -> tuple[bool, str]:
     """Simplified proxy for the stock deployment's drawdown-pause/cooldown
-    logic, sized against the $250-per-trade premium budget rather than
-    notional -- options risk is already capped per trade (max loss = full
-    premium), so this is a lighter check than the stock leg needs, but still
-    respects the same consecutive-loss cooldown and hard-shutdown spirit."""
+    logic, sized against deploy_cfg.premium_budget (the actual dollars at
+    risk per trade) rather than stock notional -- options risk is already
+    capped per trade (max loss = full premium), so this is a lighter check
+    than the stock leg needs, but still respects the same consecutive-loss
+    cooldown and hard-shutdown spirit."""
     if trades.empty:
         return True, ""
     safety = cfg
-    equity = PREMIUM_BUDGET * len(trades)  # base for drawdown calc: cumulative premium at risk across trades taken
-    pnl = (trades.net_return * PREMIUM_BUDGET).sum()
+    budget = deploy_cfg.premium_budget
+    equity = budget * len(trades)  # base for drawdown calc: cumulative premium at risk across trades taken
+    pnl = (trades.net_return * budget).sum()
     peak_equity = max(equity, equity - pnl) if pnl < 0 else equity
     dd = max(0.0, -pnl / max(peak_equity, 1.0)) if pnl < 0 else 0.0
     recent = trades.tail(int(safety.consecutive_loss_limit))
@@ -305,7 +321,7 @@ def _process_step(ledger: CallPaperLedger, deploy_cfg: CallDeploymentConfig, cfg
             return {"date": str(date), "action": "exit", "trade": trade}
         return {"date": str(date), "action": "hold", "symbol": position["underlying_symbol"], "days_held": days_held}
 
-    allowed, reason = _safety_allows_new_entry(ledger.completed_trades_frame(), cfg)
+    allowed, reason = _safety_allows_new_entry(ledger.completed_trades_frame(), cfg, deploy_cfg)
     if not allowed:
         return {"date": str(date), "action": "no_entry_safety_paused", "reason": reason}
 
@@ -362,10 +378,12 @@ def get_status(deployment_config_path: Path) -> dict:
         return {
             "halted": ledger.is_halted(),
             "halt_reason": ledger.halt_reason(),
+            "base_capital": deploy_cfg.base_capital,
+            "premium_budget_per_trade": deploy_cfg.premium_budget,
             "open_position": ledger.get_open_position(),
             "completed_trades": int(len(trades)),
             "win_rate": float((trades.net_return > 0).mean()) if len(trades) else None,
-            "total_pnl_dollars": float((trades.net_return * PREMIUM_BUDGET).sum()) if len(trades) else 0.0,
+            "total_pnl_dollars": float((trades.net_return * deploy_cfg.premium_budget).sum()) if len(trades) else 0.0,
         }
     finally:
         ledger.close()

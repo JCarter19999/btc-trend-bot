@@ -11,6 +11,19 @@ paper:
   target_dte: 30
   hold_days: 10
   strike_moneyness: 1.05  # 5% OTM -- the best-performing variant in the deep dive
+  # BASE CAPITAL: the account this deployment is scaled against, matching
+  # the other two deployments' initial_capital ($2,500). Only
+  # premium_fraction of it is ever actually at risk on a single trade --
+  # options are naturally leveraged, so this is NOT notional-matched to the
+  # stock deployments the way their $2,500-per-trade sizing is.
+  base_capital: 2500.0
+  # PREMIUM BUDGET PER TRADE = base_capital * premium_fraction = $250.
+  # This is the real number that drives P&L -- max loss per trade is capped
+  # at exactly this (full premium loss), matching the deep dive's
+  # $250-of-$2,500 (10%) convention. Change premium_fraction, not a
+  # hardcoded constant in code, to resize -- the dashboard and status CLI
+  # both read this value directly.
+  premium_fraction: 0.10
   # Optional Supabase telemetry mirror, same pattern as the stock deployments.
   # supabase_table: equity_call_paper_runs
   # supabase_outbox_path: runtime/equity_call_paper_supabase_outbox.jsonl
