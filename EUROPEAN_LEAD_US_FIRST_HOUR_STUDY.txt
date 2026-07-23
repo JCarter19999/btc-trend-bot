@@ -1,0 +1,123 @@
+EUROPEAN MARKETS AS AN EARLY SIGNAL FOR THE US FIRST TRADING HOUR
+===================================================================
+2026-07-23, research branch. Follow-up to the volatility-breakout
+straddle thread -- same underlying question (can a bigger-than-usual
+move be detected before it happens), but from cross-market lead-lag
+instead of within-market vol compression: European markets trade
+roughly 6.5 hours before the US opens, so their morning session is
+genuinely known, no-lookahead information by the time SPY opens.
+
+WHAT WAS TESTED
+----------------
+Data: yfinance hourly (60m) bars for ^GDAXI (DAX), ^FTSE (FTSE 100),
+and SPY. 60-minute granularity was a deliberate choice, not a
+shortcut: finer bars (5m/15m) cap at 60 days of history via yfinance
+(a real API limit), which isn't enough sample for a credible test.
+Hourly bars go back ~2 years (~700+ raw bars, 457-462 usable paired
+trading days after date-alignment) -- comparable in scale to the
+daily-bar studies used elsewhere in this project. A useful accident:
+the first hourly bar of each session lines up exactly with market
+open (DAX/FTSE 07:00 UTC, SPY 13:30 UTC = 9:30am ET), so the first US
+bar of the day IS the first hour, with no resampling needed.
+
+Signal (strictly no-lookahead): cumulative European return from that
+day's session open through the close of the last European bar
+BEFORE 13:30 UTC (US open) -- roughly 6.5 hours of DAX/FTSE trading
+that any US trader would have fully available before the US bell.
+
+Target: SPY's first-hour bar return (13:30-14:30 UTC), tested two
+ways -- DIRECTION (does a European up-morning predict a US up first
+hour?) and MAGNITUDE (does a big European morning move predict a big
+US first-hour move, the actual vol-breakout-shaped question).
+
+Control: real correlation compared against 1,000 randomly reshuffled
+date-pairings between the same two series. This guards against the
+two markets simply sharing a volatility regime over the 2-year window
+(both calmer in some months, both choppier in others) producing a
+correlation that has nothing to do with genuine day-to-day lead-lag.
+
+RESULTS
+--------
+DAX -> SPY first hour (462 days, 2023-09-06 to 2026-07-23):
+  Directional correlation:  0.277  (100th percentile vs. 1,000-shuffle control)
+  Magnitude correlation:    0.281  (100th percentile vs. 1,000-shuffle control)
+  Mean US first-hour |move| by DAX-morning-move quartile:
+    Q1 (smallest DAX move): 0.251%
+    Q2:                     0.221%
+    Q3:                     0.229%
+    Q4 (biggest DAX move):  0.297%   <- clearly the largest
+  Overall mean US first-hour |move|: 0.249%
+
+FTSE 100 -> SPY first hour (461 days):
+  Directional correlation: -0.005  (45.7th percentile -- NOT significant, noise)
+  Magnitude correlation:    0.208  (100th percentile vs. 1,000-shuffle control)
+  Mean US first-hour |move| by FTSE-morning-move quartile:
+    Q1: 0.260%   Q2: 0.234%   Q3: 0.231%   Q4: 0.278%
+
+DAX+FTSE average -> SPY first hour (457 days):
+  Directional correlation: 0.179  (100th percentile)
+  Magnitude correlation:   0.168  (100th percentile)
+  (weaker than DAX alone -- FTSE's near-zero directional signal
+  dilutes the combined version rather than strengthening it)
+
+READING THIS HONESTLY
+-----------------------
+This is a real, statistically robust finding, not noise -- every
+correlation reported as significant cleared 100% of 1,000 shuffled
+controls (the one that didn't, FTSE's directional correlation, is
+correctly reported as not significant rather than rounded up).
+DAX is the stronger signal of the two on both axes; FTSE only carries
+real information about MAGNITUDE (something is moving), not
+DIRECTION -- plausibly because FTSE is more domestically/commodity-
+weighted and less tied to the global growth/tech themes that move
+SPY's direction, while a big move there either way still reflects
+"something is happening" that bleeds into US volatility.
+
+The correlations themselves are moderate, not overwhelming -- DAX's
+0.28 explains roughly 8% of the variance in US first-hour magnitude
+(r-squared). This is a real edge, not a strong one, and the honest
+framing is "the top-quartile DAX-move days see a first hour about
+19% larger than average" (0.297% vs 0.249%), not "DAX tells you what
+SPY's first hour will do."
+
+WHAT WASN'T DONE HERE -- THE ACTUAL NEXT STEP
+------------------------------------------------
+This establishes that a signal exists. It does NOT establish that
+it's tradable after costs, and unlike the BTC order-flow study
+(where the edge was 76-100x too small to matter), this one has real
+headroom worth actually costing out: a 0.297% average first-hour
+move on the biggest-DAX-move days is far above any plausible SPY
+cost floor (SPY's own bid-ask spread is a basis point or two; even a
+short-dated 0DTE-adjacent options structure would likely clear it).
+Turning this into an actual strategy needs:
+  - A real execution/cost model (SPY spreads at the open specifically,
+    which are wider than mid-day; or short-dated options spreads if
+    expressed via a same-day options structure rather than the
+    underlying)
+  - A single-position-correct backtest with real entry/exit rules
+    (this study only measures the raw statistical relationship, not
+    a strategy: no entry price, no execution timing, no position
+    sizing)
+  - A check on whether the effect concentrates around scheduled
+    macro events (ECB/Fed days, EU/US data releases) rather than
+    being a general daily phenomenon -- if it's mostly an event-day
+    effect, that changes how it should be sized and scheduled
+  - Individual-stock testing, not just SPY -- the equity deployment's
+    existing universe (AAPL/MSFT/NVDA/TSLA) or a broader set might
+    show a stronger or weaker version of this effect
+
+VERDICT
+--------
+Worth pursuing further. This is the first genuinely new *information
+source* found in this project (every other track has been a
+different way of slicing price/volume data already in hand) -- a
+real, no-lookahead, statistically validated cross-market lead-lag
+effect. Not promotion-grade on its own (no cost model, no entry/exit
+rules, no per-symbol test yet), but a stronger starting point than
+most of what's been tested tonight, precisely because the mechanism
+(information takes time to cross time zones) is economically obvious
+rather than a backtest artifact needing an after-the-fact explanation.
+
+Script: experiments/run_european_lead_us_first_hour_study.py
+Data cache: data/intraday/{GDAXI,FTSE,SPY}_60m.csv
+Raw output: outputs/european_lead_us_first_hour_study/summary.json
