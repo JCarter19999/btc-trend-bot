@@ -220,25 +220,69 @@ Legacy CLI entry points (BTC lineage): `btc-trend-bot` (subcommands: `download`,
 `deploy-status`, `deploy-halt`, `deploy-resume`, `validate-short-overlay`,
 `diagnose-gaps`, `data-status`) and `btc-v1`.
 
-## Live paper deployment: Ridge halted, replaced by exit-regime/simple_trend (2026-07-23)
+## Live paper deployments: three, running in parallel (2026-07-23)
 
-Two independent live paper deployments now exist, each with its own config
-and SQLite ledger — **they never share state**:
+Three independent live paper deployments run in parallel, each with its own
+config and SQLite ledger — **they never share state**. `ARCHITECTURE.md`,
+`MODEL_CARD.md`, `RESEARCH_LOG.md`, `LIVE_DEPLOYMENT.md` are still stale
+references in the old "Where to look for more" section below (none exist in
+the repo) — but the dashboard itself is now real: `/home/joey/btc-dashboard`
+(separate project, served by `btc-dashboard.service` on :8501) has tabs for
+all three, added 2026-07-23. Check via CLI too if needed:
 
-| | Ridge (halted) | exit-regime / simple_trend (active) |
-|---|---|---|
-| Deployment config | `config/settings_equity_paper_yfinance.yaml` | `config/settings_equity_paper_yfinance_simpletrend.yaml` |
-| Strategy config | `config/schwab_paper_strategy.yaml` | `config/simple_trend_exit_regime_strategy.yaml` |
-| Ledger | `runtime/equity_yfinance_paper.sqlite3` | `runtime/equity_yfinance_paper_simpletrend.sqlite3` |
-| systemd | `equity-paper-yfinance.{service,timer}` (still installed, now a no-op every fire) | `equity-paper-yfinance-simpletrend.{service,timer}` |
-| Selection | `ridge` | `simple_trend` |
-| Exit | ATR stop 1.35 / target 2.15 | disabled (stop_atr/target_atr=100) — always runs the full `max_hold_bars=10`, exits via `time_exit` |
-| Status | **halted**, kept for its history | **active** as of 2026-07-23 |
+| | Ridge (**live control arm**, not a candidate) | exit-regime / simple_trend (**primary stock**) | call options (**primary options**) |
+|---|---|---|---|
+| Deployment config | `config/settings_equity_paper_yfinance.yaml` | `config/settings_equity_paper_yfinance_simpletrend.yaml` | `config/settings_equity_paper_calls.yaml` |
+| Strategy config | `config/schwab_paper_strategy.yaml` | `config/simple_trend_exit_regime_strategy.yaml` | `config/call_volatile_universe_strategy.yaml` |
+| Ledger | `runtime/equity_yfinance_paper.sqlite3` | `runtime/equity_yfinance_paper_simpletrend.sqlite3` | `runtime/equity_call_paper.sqlite3` |
+| systemd | `equity-paper-yfinance.{service,timer}` | `equity-paper-yfinance-simpletrend.{service,timer}` | `equity-paper-calls.{service,timer}` |
+| Schedule | 22:30 UTC (after close) | 22:32 UTC (after close) | **19:00 UTC (during market hours)** |
+| Universe | AAPL/MSFT/NVDA/TSLA | AAPL/MSFT/NVDA/TSLA | TSLA/COIN/MSTR/PLTR/GME (more volatile — see rationale below) |
+| Selection | `ridge` | `simple_trend` | `simple_trend` |
+| Expression | stock, ATR stop 1.35 / target 2.15 | stock, exit disabled (stop_atr/target_atr=100) — always full `max_hold_bars=10`, `time_exit` | 30-DTE ~5%-OTM call, real live bid/ask via yfinance, sold at 10-day hold |
+| Status | halted 2026-07-23, **resumed the same day** as a live comparison arm | active since 2026-07-23 | active since 2026-07-23 |
 
-### Why Ridge was halted (kept for the record)
+### Why the call deployment runs on a different schedule and universe
 
-`btc-trend-bot ... status` / `experiments/run_equity_paper_step.py status`
-against the Ridge config will show `"halted": true`. This is deliberate,
+`experiments/run_equity_call_paper_step.py`, from the research branch's
+`EQUITY_OPTIONS_DEEP_DIVE.md` (5% OTM / 5% spread synthetic call roughly
+tied stock-only on return while beating it on profit factor and drawdown —
+but the result was highly sensitive to the *assumed* bid-ask spread, which
+that synthetic study couldn't pin down). This live deployment removes that
+assumption entirely — it reads **real live option quotes** (`yfinance`
+`option_chain()`) instead of Black-Scholes pricing, so it's the actual
+resolution of that open question, not another backtest. Two consequences:
+it **must run during market hours** (option bid/ask read `0.0` outside the
+regular session, unlike the stock bots which only need the completed daily
+bar — see the quote-source fallback logic in that module), and it runs on
+a genuinely more volatile universe (TSLA/COIN/MSTR/PLTR/GME) since options
+economics depend heavily on volatility and the original basket is unusually
+low-vol. `safety_enabled`/`hard_shutdown_drawdown` matter differently here
+too — a real bug was found and worked around in the backtest version
+(`hard_shutdown_drawdown` ignores `safety_enabled`, see
+`EQUITY_OPTIONS_DEEP_DIVE.md`); this live version uses a lighter,
+premium-budget-scaled safety check (`_safety_allows_new_entry` in that
+module) sized against the fixed $250-per-trade premium risk, not stock
+notional.
+
+Check either bot's real status with:
+```bash
+python experiments/run_equity_paper_step.py --config config/settings_equity_paper_yfinance.yaml status              # Ridge
+python experiments/run_equity_paper_step.py --config config/settings_equity_paper_yfinance_simpletrend.yaml status   # simple_trend
+```
+
+**Ridge was resumed, not re-endorsed.** It failed re-validation (below) —
+resuming it was a deliberate choice to keep collecting live paper-trading
+data as an ongoing real-world comparison against the exit-regime strategy,
+since it costs nothing (paper only) and gives an independent check on
+whether the backtest reassessment holds up live. Its future trades are a
+control-arm data point, not evidence it's viable again — don't let "it's
+running and posting P&L" substitute for the validation it already failed.
+
+### Why Ridge was originally halted (kept for the record)
+
+`experiments/run_equity_paper_step.py status` against the Ridge config
+showed `"halted": true` for several hours on 2026-07-23. That was deliberate,
 not an outage. Full detail
 in `EQUITY_KALMAN_ONLINE_REGRESSION.md` and `EQUITY_EXPECTANCY_MATRIX_FINDINGS.md`
 on the `research` branch (`/home/joey/equity_v2_4_research`) — summary:

@@ -1,0 +1,18 @@
+[Unit]
+Description=Run the call-option paper-trading step during live market hours
+
+[Timer]
+# 19:00 UTC, Mon-Fri -- ~1 hour before US market close (20:00 UTC in EDT),
+# unlike the stock deployments (22:30/22:32 UTC, after close) -- this one
+# needs a LIVE option quote (bid/ask reads 0.0 from yfinance outside market
+# hours, even though lastPrice still holds the last real trade -- see
+# run_equity_call_paper_step.py's quote-source fallback logic). Running an
+# hour before close keeps a comfortable buffer inside the regular session.
+OnCalendar=Mon..Fri *-*-* 19:00:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+AccuracySec=1s
+Unit=equity-paper-calls.service
+
+[Install]
+WantedBy=timers.target

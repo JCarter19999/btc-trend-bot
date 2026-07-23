@@ -1,0 +1,16 @@
+# Deployment settings for the call-option live paper deployment
+# (experiments/run_equity_call_paper_step.py). Separate from both stock
+# deployments -- own ledger, own strategy config, own schedule (this one
+# must run DURING market hours to get live bid/ask quotes; the stock bots
+# run after close since they only need the completed daily bar).
+strategy_config: config/call_volatile_universe_strategy.yaml
+
+paper:
+  ledger_db_path: runtime/equity_call_paper.sqlite3
+  lock_path: runtime/equity_call_paper.lock
+  target_dte: 30
+  hold_days: 10
+  strike_moneyness: 1.05  # 5% OTM -- the best-performing variant in the deep dive
+  # Optional Supabase telemetry mirror, same pattern as the stock deployments.
+  # supabase_table: equity_call_paper_runs
+  # supabase_outbox_path: runtime/equity_call_paper_supabase_outbox.jsonl

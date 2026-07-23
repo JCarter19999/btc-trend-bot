@@ -1,0 +1,14 @@
+[Unit]
+Description=Equity call-option daily paper-trading step (real live option quotes, no live orders)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=joey
+Group=joey
+WorkingDirectory=/home/joey/equity_v2_4
+EnvironmentFile=-/home/joey/.config/btc-trend-bot/telemetry.env
+ExecStart=/home/joey/equity_v2_4/.venv/bin/python experiments/run_equity_call_paper_step.py --config config/settings_equity_paper_calls.yaml step
+TimeoutStartSec=120
+Nice=10

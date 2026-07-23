@@ -1,0 +1,41 @@
+# Frozen strategy-parameter snapshot for the call-option live paper deployment.
+#
+# Promoted 2026-07-23 from the research branch's options deep dive
+# (EQUITY_OPTIONS_DEEP_DIVE.md). Uses the same simple_trend selection as the
+# primary stock deployment (config/simple_trend_exit_regime_strategy.yaml),
+# but on a more volatile universe -- options economics depend heavily on
+# volatility, and the original AAPL/MSFT/NVDA/TSLA basket is unusually
+# low-vol for this purpose.
+#
+# The options deep dive found this was NOT a clean negative (unlike the
+# stock-only exit-regime finding) but was highly sensitive to the bid-ask
+# spread assumption used in synthetic pricing -- exactly the input this live
+# deployment removes the need to assume, since it reads real live option
+# quotes (bid/ask) from yfinance instead of a Black-Scholes estimate. This
+# deployment is the actual resolution of that open question, not another
+# backtest.
+symbols: [TSLA, COIN, MSTR, PLTR, GME]
+benchmark: SPY
+start: '2018-01-01'
+end: null
+interval: 1d
+auto_adjust: true
+initial_capital: 2500.0
+position_fraction: 0.25  # unused by the options position-sizing path; kept for config-shape parity with the stock strategy loader
+return_threshold_bps: 10.0  # unused by simple_trend selection
+max_hold_bars: 10
+train_bars: 756  # unused by simple_trend selection (no model to train)
+test_bars: 126
+step_bars: 126
+purge_bars: 10
+ridge_alpha: 10.0  # unused by simple_trend selection
+stop_atr: 100.0   # unused directly by the options leg; kept so decide_today's shared BacktestConfig loader is happy
+target_atr: 100.0
+slippage_bps_each_side: 2.0
+safety:
+  enabled: true
+  drawdown_pause: 0.15
+  hard_shutdown_drawdown: 0.35
+  consecutive_loss_limit: 4
+  cooldown_trades: 8
+  minimum_equity: 25.0
