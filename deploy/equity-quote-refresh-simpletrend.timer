@@ -1,8 +1,8 @@
 [Unit]
-Description=Every 15min during market hours: refresh simple_trend's open-position current price
+Description=Every 5min during market hours: refresh simple_trend's open-position current price
 
 [Timer]
-OnCalendar=Mon..Fri *-*-* 13..21:00/15:00
+OnCalendar=Mon..Fri *-*-* 13..21:00/5:00
 Persistent=false
 
 [Install]
