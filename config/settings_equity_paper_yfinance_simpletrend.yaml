@@ -1,0 +1,32 @@
+# Interim deployment settings for the "exit-regime" live paper deployment
+# (simple_trend selection, ATR stop/target disabled), replacing the halted
+# Ridge deployment (config/settings_equity_paper_yfinance.yaml, see that
+# file's ledger and CLAUDE.md for the halt record). Runs alongside the
+# halted Ridge ledger, not instead of it -- the Ridge ledger stays in place
+# as a documented negative result; this is a separate deployment with its
+# own ledger so trade history never mixes between the two hypotheses.
+#
+# Strategy parameters (symbols, ATR, safety, position_fraction,
+# initial_capital) live in strategy_config below -- see that file's header
+# for the promotion rationale and validation.
+strategy_config: config/simple_trend_exit_regime_strategy.yaml
+
+data_source: yfinance
+
+schwab:
+  token_path: runtime/schwab_token.json   # unused when data_source is yfinance
+  lookback_days: 1400   # trailing calendar days fetched per symbol on each step
+
+paper:
+  ledger_db_path: runtime/equity_yfinance_paper_simpletrend.sqlite3
+  lock_path: runtime/equity_yfinance_paper_simpletrend.lock
+  selection: simple_trend   # ridge | random | simple_trend -- see
+                              # config/simple_trend_exit_regime_strategy.yaml
+                              # for why this deployment uses simple_trend, not ridge
+  # Optional Supabase telemetry mirror (see sql/003_equity_paper_runs.sql). Reads
+  # SUPABASE_URL/SUPABASE_SECRET_KEY from the environment; silently a no-op if
+  # unset. Distinguished from the halted Ridge deployment's rows by
+  # config_hash (derived from strategy_config) even though both share the
+  # default table below.
+  # supabase_table: equity_paper_runs
+  # supabase_outbox_path: runtime/equity_yfinance_paper_simpletrend_supabase_outbox.jsonl

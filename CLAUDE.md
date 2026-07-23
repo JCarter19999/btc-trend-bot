@@ -220,10 +220,26 @@ Legacy CLI entry points (BTC lineage): `btc-trend-bot` (subcommands: `download`,
 `deploy-status`, `deploy-halt`, `deploy-resume`, `validate-short-overlay`,
 `diagnose-gaps`, `data-status`) and `btc-v1`.
 
-## ⚠ Live paper deployment HALTED (2026-07-23) — Ridge failed re-validation
+## Live paper deployment: Ridge halted, replaced by exit-regime/simple_trend (2026-07-23)
+
+Two independent live paper deployments now exist, each with its own config
+and SQLite ledger — **they never share state**:
+
+| | Ridge (halted) | exit-regime / simple_trend (active) |
+|---|---|---|
+| Deployment config | `config/settings_equity_paper_yfinance.yaml` | `config/settings_equity_paper_yfinance_simpletrend.yaml` |
+| Strategy config | `config/schwab_paper_strategy.yaml` | `config/simple_trend_exit_regime_strategy.yaml` |
+| Ledger | `runtime/equity_yfinance_paper.sqlite3` | `runtime/equity_yfinance_paper_simpletrend.sqlite3` |
+| systemd | `equity-paper-yfinance.{service,timer}` (still installed, now a no-op every fire) | `equity-paper-yfinance-simpletrend.{service,timer}` |
+| Selection | `ridge` | `simple_trend` |
+| Exit | ATR stop 1.35 / target 2.15 | disabled (stop_atr/target_atr=100) — always runs the full `max_hold_bars=10`, exits via `time_exit` |
+| Status | **halted**, kept for its history | **active** as of 2026-07-23 |
+
+### Why Ridge was halted (kept for the record)
 
 `btc-trend-bot ... status` / `experiments/run_equity_paper_step.py status`
-will show `"halted": true`. This is deliberate, not an outage. Full detail
+against the Ridge config will show `"halted": true`. This is deliberate,
+not an outage. Full detail
 in `EQUITY_KALMAN_ONLINE_REGRESSION.md` and `EQUITY_EXPECTANCY_MATRIX_FINDINGS.md`
 on the `research` branch (`/home/joey/equity_v2_4_research`) — summary:
 
@@ -260,6 +276,49 @@ firing on schedule either way (`halted` is just a fast no-op branch inside
 controls in the research-branch docs above by a margin outside their own
 seed-to-seed variance — "looks profitable" was exactly what led to Ridge's
 original promotion, and it wasn't sufficient.
+
+### What replaced it and why
+
+`simple_trend` (a deterministic momentum rule, not an ML model — see
+`_select_fold_winners` in `run_equity_real_data_walkforward.py`) paired with
+the ATR stop/target disabled (always exits at the fixed 10-day
+`max_hold_bars`). Validated on the `research` branch
+(`EQUITY_EXPECTANCY_MATRIX_FINDINGS.md`, "Update: candidate-edge / exit-edge
+decomposition" section, plus a full-history extension of that check): full
+2018–2026 sample, 188 single-position trades, **243.3 bps/trade expectancy,
+58.0% win rate, profit factor 2.04**, bootstrap 95% CI on mean trade return
+excludes zero, **99th percentile of a 100-seed random-selection
+distribution** (vs. Ridge's 2nd–10th), robust to 2.5x slippage (237.2 bps),
+and dramatically more stable year-by-year than Ridge (worst year −1.4% in
+2018 and −0.9% in 2022, vs. Ridge's −25.9% in 2022 alone).
+
+Important framing, not a caveat to bury: expectancy increased monotonically
+in a hold-duration sensitivity check (5/10/15/20 days: 106.6 / 243.3 / 272.3
+/ 452.7 bps) — that pattern means this should be understood as **medium-term
+trend/beta exposure to a strong-momentum basket**, not a precisely-timed
+edge at exactly 10 days. `max_hold_bars` was deliberately left at 10 (the
+pre-existing project default) rather than cherry-picked from that sweep —
+re-tuning it now against the same data that motivated the change would be
+the exact "optimize on the holdout" mistake this whole exercise exists to
+avoid.
+
+**Options overlay (raised, deliberately deferred, not dropped):** if a
+position is expected to be favorable for ~10 days, a 30-day call is a
+reasonable-sounding way to express that with convexity. This project already
+tested a synthetic-option-chain overlay
+(`EQUITY_HYBRID_OPTION_OPTIMIZER_RESULTS.md`) and found it didn't help even
+under favorable synthetic assumptions — stock-only had the best risk-adjusted
+result, every options expression added drawdown/ruin risk without added
+mean return, and the optimizer rejected ~78% of stock signals as lacking a
+positive-EV contract. `CLAUDE.md`'s existing guardrail (below) already
+forbids presenting Black-Scholes/synthetic-IV reconstructions as real
+historical options performance, and buying a 30-day call to express a 10-day
+thesis means *selling* (not exercising) at day 10, whose P&L depends on IV
+movement a fixed-vol model can't honestly simulate. Real validation needs
+actual historical option chains (bid/ask, OI, IV) — a data vendor
+(ORATS/CBOE DataShop/Polygon.io/etc.), not a formula. Left out of this
+deployment; tracked as a real next step once real options data is available,
+not shelved.
 
 ## Deployment roadmap (not yet live)
 

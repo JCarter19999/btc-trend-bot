@@ -1,0 +1,17 @@
+[Unit]
+Description=Run the exit-regime/simple_trend equity daily paper-trading step after each US market close
+
+[Timer]
+# 22:30 UTC, Mon-Fri -- comfortably after the 4pm ET close in both EDT (20:00
+# UTC) and EST (21:00 UTC), with margin for yfinance's daily-bar publish lag.
+# Same schedule as equity-paper-yfinance.timer (the halted Ridge deployment) --
+# staggered by 2 minutes via RandomizedDelaySec/offset below so the two
+# don't contend for the same yfinance rate-limit window.
+OnCalendar=Mon..Fri *-*-* 22:32:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+AccuracySec=1s
+Unit=equity-paper-yfinance-simpletrend.service
+
+[Install]
+WantedBy=timers.target

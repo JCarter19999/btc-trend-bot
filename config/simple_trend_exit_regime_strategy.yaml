@@ -1,0 +1,58 @@
+# Frozen strategy-parameter snapshot for the "exit-regime" live paper deployment.
+#
+# Promoted 2026-07-23, replacing the Ridge-selected strategy in
+# config/schwab_paper_strategy.yaml (halted the same day -- see CLAUDE.md).
+# Rationale and validation: equity_v2_4_research branch,
+# EQUITY_EXPECTANCY_MATRIX_FINDINGS.md and EQUITY_KALMAN_ONLINE_REGRESSION.md.
+#
+# Two changes from the Ridge-era config, both evidence-driven, not tuned on
+# this deployment's own data:
+#   - Paired with selection: simple_trend in the deployment config (a
+#     deterministic, transparent momentum rule -- see
+#     run_equity_paper_step.py's `selection`), not Ridge. Under a corrected
+#     single-position/non-compounding backtest, real-label Ridge ranked in
+#     the 2nd-10th percentile of a 50-seed random-selection distribution;
+#     simple_trend combined with the exit change below ranked at the 99th
+#     percentile of the same kind of distribution on the full 2018-2026
+#     sample (243.3 bps/trade expectancy, 58.0% win rate, profit factor 2.04,
+#     bootstrap 95% CI on mean trade return distinguishable from zero).
+#   - stop_atr/target_atr raised to 100 (effectively disabled) so every trade
+#     runs the full max_hold_bars=10 and exits via time_exit. A decomposition
+#     test found the existing 1.35/2.15 ATR stop/target *underperformed* a
+#     naive fixed 10-day hold on identical entries (+50.3 bps vs +132.8 bps)
+#     -- the active stop-loss was trimming more upside than it protected on
+#     this basket/period. NOT re-tuned to a "better" hold length: a light
+#     sensitivity check (5/10/15/20 days) showed expectancy increasing
+#     monotonically with hold duration, which reads as "this is medium-term
+#     trend/beta exposure, not a precisely-timed edge" -- max_hold_bars was
+#     deliberately left at 10 (the pre-existing project default) rather than
+#     cherry-picked from that sweep.
+#
+# Everything else unchanged from configs/real_data.yaml / the Ridge-era
+# schwab_paper_strategy.yaml -- same universe, same capital/safety rules,
+# same costs.
+symbols: [AAPL, MSFT, NVDA, TSLA]
+benchmark: SPY
+start: '2018-01-01'
+end: null
+interval: 1d
+auto_adjust: true
+initial_capital: 2500.0
+position_fraction: 0.25  # fraction of equity committed to each trade; rest stays uninvested in cash
+return_threshold_bps: 10.0  # unused by simple_trend selection; kept for config-shape parity
+max_hold_bars: 10
+train_bars: 756  # unused by simple_trend selection (no model to train)
+test_bars: 126
+step_bars: 126
+purge_bars: 10
+ridge_alpha: 10.0  # unused by simple_trend selection
+stop_atr: 100.0   # effectively disabled -- see rationale above
+target_atr: 100.0  # effectively disabled -- see rationale above
+slippage_bps_each_side: 2.0
+safety:
+  enabled: true
+  drawdown_pause: 0.15
+  hard_shutdown_drawdown: 0.35
+  consecutive_loss_limit: 4
+  cooldown_trades: 8
+  minimum_equity: 25.0
