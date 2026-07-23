@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import run_equity_paper_step as stock_bot  # noqa: E402
 import run_equity_call_paper_step as call_bot  # noqa: E402
+import run_european_signal_shadow_step as eu_signal_bot  # noqa: E402
 from send_email_smtp import send  # noqa: E402
 
 BOTS = [
@@ -36,10 +37,12 @@ BOTS = [
 TIMERS = [
     "equity-paper-yfinance.timer", "equity-paper-yfinance-simpletrend.timer",
     "equity-paper-calls.timer", "equity-quote-refresh-simpletrend.timer",
-    "equity-quote-refresh-ridge.timer",
+    "equity-quote-refresh-ridge.timer", "european-signal-shadow-entry.timer",
+    "european-signal-shadow-exit.timer",
 ]
 SERVICES_TO_CHECK_LOGS = [
     "equity-paper-yfinance.service", "equity-paper-yfinance-simpletrend.service", "equity-paper-calls.service",
+    "european-signal-shadow-entry.service", "european-signal-shadow-exit.service",
 ]
 
 
@@ -55,11 +58,20 @@ def check_timers() -> tuple[str, list[str]]:
 
 
 def check_recent_errors() -> list[str]:
+    """Crude substring match on 'error'/'traceback'/'exception' -- excludes
+    lines that are actually Python warnings (DeprecationWarning etc.),
+    which routinely say things like "will raise an error in the future"
+    as normal warning text, not a real error. Caught a false positive from
+    exactly this pattern on 2026-07-23 (a DeprecationWarning line got
+    reported as an "issue" in the daily email)."""
     findings = []
     for svc in SERVICES_TO_CHECK_LOGS:
         out = _run(["journalctl", "-u", svc, "--since", "-24 hours", "--no-pager"])
         for line in out.splitlines():
-            if any(tok in line.lower() for tok in ("error", "traceback", "exception")):
+            lowered = line.lower()
+            if "warning" in lowered:
+                continue
+            if any(tok in lowered for tok in ("error", "traceback", "exception")):
                 findings.append(f"{svc}: {line.strip()}")
     return findings
 
@@ -156,6 +168,10 @@ def main() -> None:
     if call_status.get("halted"):
         issues.append(f"Call options is HALTED: {call_status.get('halt_reason')}")
 
+    eu_status = eu_signal_bot.status()
+    if eu_status.get("halted"):
+        issues.append(f"European signal is HALTED: {eu_status.get('halt_reason')}")
+
     timers_out, inactive_timers = check_timers()
     if inactive_timers:
         issues.append(f"Inactive: {', '.join(inactive_timers)}")
@@ -186,9 +202,18 @@ def main() -> None:
                  f"${call_pos.get('current_mark'):.2f}" if call_pos.get("current_mark") else "—",
                  call_pnl, call_status.get("completed_trades", 0)))
 
+    eu_primary = eu_status.get("primary_book", {})
+    eu_signal = eu_status.get("most_recent_signal") or {}
+    eu_direction = {1: "LONG", -1: "SHORT", 0: "FLAT", None: "—"}.get(eu_signal.get("dax_direction"), "—")
+
     text_lines = [f"Equity/BTC paper-trading daily check -- {today} -- {verdict}", ""]
     for n, l, sym, entry, cur, pnl, completed in rows:
         text_lines.append(f"{n} ({l}): {sym} | entry {entry} | current {cur} | unrealized {pnl} | completed trades {completed}")
+    text_lines.append(
+        f"European signal (SPY, DAX-top-quartile): equity ${eu_primary.get('current_equity', 2500.0):,.2f} "
+        f"({eu_primary.get('total_return_pct', 0.0):+.2f}%) | trades {eu_primary.get('trades_taken', 0)} | "
+        f"today's signal {eu_direction}"
+    )
     if fixes:
         text_lines += ["", "Fixed automatically:"] + [f"- {f}" for f in fixes]
     if issues:
@@ -208,6 +233,15 @@ def main() -> None:
     )
     fixes_html = ("<h3 style='color:#2ca02c'>Fixed automatically</h3><ul>" + "".join(f"<li>{f}</li>" for f in fixes) + "</ul>") if fixes else ""
     issues_html = ("<h3 style='color:#d62728'>Issues found</h3><ul>" + "".join(f"<li>{i}</li>" for i in issues) + "</ul>") if issues else ""
+    eu_return_color = "#2ca02c" if eu_primary.get("total_return_pct", 0.0) >= 0 else "#d62728"
+    eu_html = f"""
+  <h3 style="margin-top:24px;color:#a855f7">🌍 European signal (SPY, DAX-top-quartile)</h3>
+  <p style="line-height:1.6;color:#c9d1d9">
+    Equity <b>${eu_primary.get('current_equity', 2500.0):,.2f}</b>
+    (<span style="color:{eu_return_color}">{eu_primary.get('total_return_pct', 0.0):+.2f}%</span>)
+    &middot; {eu_primary.get('trades_taken', 0)} trades &middot; today's signal: <b>{eu_direction}</b>
+  </p>
+"""
     html_body = f"""
 <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
@@ -223,6 +257,7 @@ def main() -> None:
     </tr>
     {table_rows}
   </table>
+  {eu_html}
   {fixes_html}
   {issues_html}
   <h3 style="margin-top:24px">🔥 Claude's Hot Take</h3>

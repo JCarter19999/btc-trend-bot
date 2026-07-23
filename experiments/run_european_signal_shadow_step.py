@@ -213,6 +213,19 @@ def step_entry() -> dict:
             conn.commit()
             return {"status": "rejected", "reason": "missing_dax_data", "flags": flags}
 
+        if flags.get("dax_stale_data"):
+            # Hard reject rather than trade through it -- a stale DAX read
+            # means the signal itself can't be trusted (real operation
+            # should see fresh data at 13:32 UTC; staleness this close to
+            # entry is a real data problem, not a benign edge case).
+            conn.execute(
+                "INSERT INTO signal_log(date,dax_pre_open_return,dax_abs_move,dax_direction,status,data_quality_flags,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (str(today.date()), dax_ret, abs(dax_ret), int(np.sign(dax_ret)), "rejected_stale_dax",
+                 json.dumps(flags), _utc_now(), _utc_now()))
+            conn.commit()
+            return {"status": "rejected", "reason": "stale_dax_data", "flags": flags}
+
         dax_abs_move = abs(dax_ret)
         direction = int(np.sign(dax_ret))
         asia_vals = [v for v in asia.values() if v is not None]
