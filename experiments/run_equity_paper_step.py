@@ -297,6 +297,8 @@ CREATE TABLE IF NOT EXISTS open_position (
     stop_price       REAL,
     target_price     REAL,
     bars_held        INTEGER NOT NULL DEFAULT 0,
+    current_price    REAL,
+    current_price_at TEXT,
     updated_at       TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS runs (
@@ -321,6 +323,13 @@ class PaperLedger:
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        # Migration for ledgers created before current_price tracking existed --
+        # CREATE TABLE IF NOT EXISTS above doesn't add columns to an existing table.
+        for col, decl in (("current_price", "REAL"), ("current_price_at", "TEXT")):
+            try:
+                self.conn.execute(f"ALTER TABLE open_position ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         self.conn.commit()
 
     def close(self) -> None:
@@ -586,6 +595,42 @@ def run_step(deployment_config_path: Path, client: "SchwabClientProtocol | None"
             ledger.close()
 
 
+def refresh_quote(deployment_config_path: Path) -> dict:
+    """Lightweight intraday price refresh, separate from run_step()'s daily
+    decision cycle -- updates open_position.current_price/current_price_at so
+    the dashboard can show live mark-to-market and unrealized P&L between
+    daily bars, without evaluating any entry/exit/stop logic. Trading
+    decisions still only happen once/day in run_step(), at the completed bar
+    -- this never fills, exits, or manages a position."""
+    deploy_cfg, strategy_cfg = load_deployment_config(deployment_config_path)
+    if deploy_cfg.data_source != "yfinance":
+        return {"status": "skipped", "reason": "quote refresh only implemented for data_source=yfinance"}
+    with process_lock(deploy_cfg.lock_path):
+        ledger = PaperLedger(deploy_cfg.ledger_db_path)
+        try:
+            if ledger.is_halted():
+                return {"status": "halted"}
+            position = ledger.get_open_position()
+            if position is None or position["status"] != "open":
+                return {"status": "no_open_position"}
+            symbol = position["symbol"]
+            start = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=5)).date().isoformat()
+            frames = walkforward.download_yfinance((symbol,), start, None, strategy_cfg.interval)
+            if symbol not in frames or frames[symbol].empty:
+                return {"status": "no_data", "symbol": symbol}
+            current_price = float(frames[symbol].iloc[-1]["close"])
+            ledger.upsert_open_position(
+                status=position["status"], symbol=position["symbol"], signal_time=position["signal_time"],
+                atr=position["atr"], predicted_return=position.get("predicted_return"),
+                entry_time=position["entry_time"], entry_price=position["entry_price"],
+                stop_price=position["stop_price"], target_price=position["target_price"],
+                bars_held=position["bars_held"], current_price=current_price, current_price_at=_utc_now(),
+            )
+            return {"status": "ok", "symbol": symbol, "current_price": current_price}
+        finally:
+            ledger.close()
+
+
 def get_status(deployment_config_path: Path) -> dict:
     deploy_cfg, _ = load_deployment_config(deployment_config_path)
     ledger = PaperLedger(deploy_cfg.ledger_db_path)
@@ -620,6 +665,7 @@ def main():
     parser.add_argument("--config", default="config/settings_schwab_equity_paper.yaml")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("step", help="Run one idempotent daily paper-trading decision/position-management cycle")
+    sub.add_parser("refresh-quote", help="Intraday-only: update open position's current_price, no trading decisions")
     sub.add_parser("status", help="Show halt state, open position, and ledger size")
     halt_p = sub.add_parser("halt", help="Set the persistent halt flag; blocks step entirely, including position management")
     halt_p.add_argument("--reason", default="manual operator halt")
@@ -632,6 +678,8 @@ def main():
 
     if args.command == "step":
         print(json.dumps(run_step(config_path), indent=2, default=str))
+    elif args.command == "refresh-quote":
+        print(json.dumps(refresh_quote(config_path), indent=2, default=str))
     elif args.command == "status":
         print(json.dumps(get_status(config_path), indent=2, default=str))
     elif args.command == "halt":
