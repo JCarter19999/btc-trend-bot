@@ -220,54 +220,66 @@ Legacy CLI entry points (BTC lineage): `btc-trend-bot` (subcommands: `download`,
 `deploy-status`, `deploy-halt`, `deploy-resume`, `validate-short-overlay`,
 `diagnose-gaps`, `data-status`) and `btc-v1`.
 
-## Shadow paper deployment #4: European lead signal (2026-07-23, NOT promoted)
+## Paper deployment #4: European lead signal (added 2026-07-23)
 
-`experiments/run_european_signal_shadow_step.py` — a fourth Phase 2 shadow
-deployment, but deliberately **not** in the table below and **not** on the
-dashboard/rankings/daily email yet, per Joey's explicit instruction:
-"only if positive we'd throw it onto the streamlit dashboard and include
-it against the rankings and in the daily email summary digest." Check via
-CLI only until it earns its way in:
-```bash
-python experiments/run_european_signal_shadow_step.py status
-```
+`experiments/run_european_signal_shadow_step.py` — promoted the same day
+it was built, on the strength of the real-data backtest rather than
+waiting to accumulate weeks of live shadow trades: Joey's call after
+seeing the backtest numbers ("just backtest it and if backtesting is good
+with 2.5k capital let's run it"), not a fixed accumulate-N-trades gate.
+Originally scoped as CLI-only/shadow-only until it "earned its way in" —
+superseded by that instruction. Now tracks a real $2,500 compounding
+equity curve going forward (paper only, no live orders) and is eligible
+for the dashboard/rankings/email once those get wired up.
+
+**Primary tracked book: SPY, DAX-top-quartile-alone** (`eligible_top_quartile`
+in the ledger), not the DAX+Asia joint filter. Deliberately chosen over the
+joint filter despite its higher in-sample Sharpe (~5-6) because that arm
+only has 32 trades over 2.3yr and was never independently out-of-sample
+tested; DAX-alone has 111-116 trades AND held up (actually strengthened)
+on a real out-of-sample split in `EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt`
+— asked Joey directly which to use as the capital-tracked line given this
+tradeoff, he picked DAX-alone. QQQ and the DAX+Asia joint arm are still
+logged in parallel for comparison (`arm_performance` in `status`), just
+not the primary equity curve.
 
 Signal: DAX's cumulative return from its own session open through the
-last bar closed before US open (13:30 UTC) sets direction; two
-eligibility filters (DAX move in its own top quartile; a 3-index Asian
-magnitude composite in its top quartile), computed as **expanding
-percentiles using only prior days** — bootstrapped from
-`data/european_signal_percentile_seed.csv` (629 days of real historical
-DAX/Asian data, 2023-09 to 2026-07, the same series validated in
-`EUROPEAN_LEAD_US_FIRST_HOUR_STUDY.txt`/`_BACKTEST.txt` on the research
-branch) so the threshold is meaningful from day one — but every trade's
-entry/exit price is 100% live, real-time, forward-only starting
-2026-07-24; nothing about the trade itself is historical or fabricated.
-Trades SPY and QQQ, one hour, no live orders. Two systemd timers:
-`european-signal-shadow-entry.{service,timer}` (13:32 UTC, logs entry
-quotes) and `european-signal-shadow-exit.{service,timer}` (14:32 UTC,
-logs exit + realized return at 1/2/5bps cost tiers).
+last bar closed before US open (13:30 UTC) sets direction; eligibility
+filters computed as **expanding percentiles using only prior days** —
+bootstrapped from `data/european_signal_percentile_seed.csv` (629 days of
+real historical DAX/Asian data, 2023-09 to 2026-07, the same series
+validated on the research branch) so the threshold is meaningful from day
+one — but every trade's entry/exit price is 100% live, real-time,
+forward-only starting 2026-07-24; nothing about the trade itself is
+historical or fabricated. One-hour hold, no live orders. Two systemd
+timers: `european-signal-shadow-entry.{service,timer}` (13:32 UTC, logs
+entry quotes) and `european-signal-shadow-exit.{service,timer}` (14:32
+UTC, logs exit + realized return at 1/2/5bps cost tiers).
 
-**Scope note**: the research request (`EUROPEAN LEAD SIGNAL... SYNTHETIC
-RESULTS + IMPLEMENTATION INSTRUCTIONS`, 2026-07-23) specified a much
-larger 19-part system (10 statistical controls, 6 entry-delay scenarios,
-options shadow overlay, full dashboard panel, unit tests, daylight-saving
-audit reports). Built the essential core only — no-lookahead signal
-computation, real quote-based entry/exit, cost-tier tracking, data-quality
-flagging — and deferred the rest rather than build all of it at lower
-quality. The "synthetic Monte Carlo sensitivity" results in that request
-were not independently produced or verified in this session; the request
-itself correctly frames them as not proof ("the real-data backtest and
-live paper results remain the source of truth"), so they weren't relied
-on here — this shadow deployment stands on the real-data backtest results
-in `EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt` alone.
+Check status:
+```bash
+python experiments/run_european_signal_shadow_step.py status
+python experiments/run_european_signal_shadow_step.py halt --reason "..."   # blocks new entries, matches other bots' halt pattern
+python experiments/run_european_signal_shadow_step.py resume
+```
 
-**Promotion bar before this touches the dashboard, rankings, or daily
-email** (informal, not the full 14-point gate list from that request):
-enough completed trades to mean something (dozens, not a handful),
-positive expectancy net of the 2bp cost tier, and the top-quartile arms
-beating the daily arm the way the backtest predicted. Until then this is
-CLI-only and absent from every other user-facing surface.
+**Scope note**: the research request that spawned this
+(`EUROPEAN LEAD SIGNAL... SYNTHETIC RESULTS + IMPLEMENTATION INSTRUCTIONS`,
+2026-07-23) specified a much larger 19-part system (10 statistical
+controls, 6 entry-delay scenarios, options shadow overlay, full dashboard
+panel, unit tests, daylight-saving audit reports). Built the essential
+core only — no-lookahead signal computation, real quote-based entry/exit,
+cost-tier tracking, data-quality flagging, a real tracked equity curve —
+and deferred the rest rather than build all of it at lower quality. The
+"synthetic Monte Carlo sensitivity" results in that request were not
+independently produced or verified in this session; the request itself
+correctly frames them as not proof ("the real-data backtest and live
+paper results remain the source of truth"), so they weren't relied on
+here — this deployment stands on the real-data backtest results in
+`EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt` alone. Still genuinely paper
+— no live capital, no live orders, same as every other deployment in this
+file — "promoted" here means "gets a real tracked equity curve and a
+dashboard/email presence," not "trading real money."
 
 ## Live paper deployments: three, running in parallel (2026-07-23)
 

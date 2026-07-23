@@ -55,6 +55,20 @@ COST_TIERS_BPS = (1.0, 2.0, 5.0)
 MIN_HISTORY_FOR_PERCENTILE = 20
 US_OPEN_UTC = pd.Timestamp("13:30:00").time()
 
+# Primary tracked $2,500 paper book: SPY, DAX-top-quartile-alone (NOT the
+# DAX+Asia joint filter). Chosen deliberately over the DAX+Asia arm despite
+# its higher in-sample Sharpe (~5-6) because that arm only has 32 trades
+# over 2.3yr and was never independently out-of-sample split-tested; this
+# arm has 111-116 trades AND held up (actually strengthened) on a real
+# out-of-sample split in EUROPEAN_LEAD_US_FIRST_HOUR_BACKTEST.txt -- the
+# better-evidenced choice for something getting a real tracked equity curve.
+# The Asia-gated arm and QQQ are still logged for comparison (arm_performance
+# in status()), just not the capital-tracked line.
+PRIMARY_INSTRUMENT = "SPY"
+PRIMARY_ARM_COLUMN = "eligible_top_quartile"
+PRIMARY_COST_TIER = "net_return_2bp"
+PRIMARY_INITIAL_CAPITAL = 2500.0
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS signal_log (
     date                 TEXT PRIMARY KEY,
@@ -88,6 +102,10 @@ CREATE TABLE IF NOT EXISTS trade_log (
     net_return_2bp    REAL,
     net_return_5bp    REAL,
     PRIMARY KEY (date, instrument)
+);
+CREATE TABLE IF NOT EXISTS kv_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 
@@ -176,6 +194,10 @@ def step_entry() -> dict:
     today = pd.Timestamp.now(tz="UTC")
     conn = _conn()
     try:
+        halted = conn.execute("SELECT value FROM kv_state WHERE key='halted'").fetchone()
+        if halted and halted["value"] == "true":
+            return {"status": "halted"}
+
         existing = conn.execute("SELECT date FROM signal_log WHERE date=?", (str(today.date()),)).fetchone()
         if existing:
             return {"status": "already_processed", "date": str(today.date())}
@@ -275,10 +297,43 @@ def step_exit() -> dict:
         conn.close()
 
 
+def get_primary_equity_curve(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Compounding $2,500 equity curve for the primary tracked book: SPY,
+    DAX-top-quartile-alone, 2bp cost tier -- see PRIMARY_* constants for
+    why this specific arm was chosen over the higher-Sharpe-but-thinner
+    DAX+Asia joint arm."""
+    trades = pd.read_sql_query(
+        f"SELECT t.date, t.{PRIMARY_COST_TIER} as net_return FROM trade_log t "
+        f"JOIN signal_log s ON t.date = s.date "
+        f"WHERE t.instrument=? AND s.{PRIMARY_ARM_COLUMN}=1 AND t.{PRIMARY_COST_TIER} IS NOT NULL "
+        f"ORDER BY t.date",
+        conn, params=(PRIMARY_INSTRUMENT,))
+    if trades.empty:
+        return trades
+    trades["equity"] = PRIMARY_INITIAL_CAPITAL * (1 + trades["net_return"]).cumprod()
+    trades["drawdown"] = 1 - trades["equity"] / trades["equity"].cummax()
+    return trades
+
+
+def set_halt(halted: bool, reason: str = "manual operator halt") -> None:
+    conn = _conn()
+    try:
+        conn.execute("INSERT INTO kv_state(key,value) VALUES('halted',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     ("true" if halted else "false",))
+        conn.execute("INSERT INTO kv_state(key,value) VALUES('halt_reason',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                     (reason if halted else "",))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def status() -> dict:
     conn = _conn()
     try:
+        halted_row = conn.execute("SELECT value FROM kv_state WHERE key='halted'").fetchone()
+        halt_reason_row = conn.execute("SELECT value FROM kv_state WHERE key='halt_reason'").fetchone()
         recent_signal = conn.execute("SELECT * FROM signal_log ORDER BY date DESC LIMIT 1").fetchone()
+        pending = conn.execute("SELECT * FROM signal_log WHERE status='pending_exit'").fetchone()
         trades = pd.read_sql_query(
             "SELECT t.*, s.eligible_daily, s.eligible_top_quartile, s.eligible_top_quartile_asia "
             "FROM trade_log t JOIN signal_log s ON t.date = s.date WHERE t.gross_return IS NOT NULL", conn)
@@ -298,10 +353,27 @@ def status() -> dict:
                     "mean_return_2bp_bps": float(arm_trades["net_return_2bp"].mean() * 10000),
                 }
 
+        curve = get_primary_equity_curve(conn)
+        primary = {
+            "instrument": PRIMARY_INSTRUMENT, "arm": PRIMARY_ARM_COLUMN, "initial_capital": PRIMARY_INITIAL_CAPITAL,
+            "trades_taken": int(len(curve)),
+        }
+        if len(curve):
+            primary.update({
+                "current_equity": float(curve["equity"].iloc[-1]),
+                "total_return_pct": float((curve["equity"].iloc[-1] / PRIMARY_INITIAL_CAPITAL - 1) * 100),
+                "max_drawdown_pct": float(curve["drawdown"].max() * 100),
+                "win_rate": float((curve["net_return"] > 0).mean()),
+            })
+
         return {
+            "halted": bool(halted_row and halted_row["value"] == "true"),
+            "halt_reason": halt_reason_row["value"] if halt_reason_row else "",
             "total_days_logged": int(pd.read_sql_query("SELECT COUNT(*) as c FROM signal_log", conn).iloc[0]["c"]),
             "completed_trades": int(len(trades)),
+            "pending_position": dict(pending) if pending else None,
             "most_recent_signal": dict(recent_signal) if recent_signal else None,
+            "primary_book": primary,
             "arm_performance": arm_stats,
             "note": "Shadow paper only -- not promoted to dashboard/rankings/email until arms show real positive results over enough trades (see CLAUDE.md promotion gates).",
         }
@@ -315,6 +387,9 @@ def main() -> None:
     sub.add_parser("step-entry", help="Compute today's signal, log entry quotes (~13:32 UTC)")
     sub.add_parser("step-exit", help="Log exit quotes, compute realized returns (~14:32 UTC)")
     sub.add_parser("status", help="Show recent signal + arm performance")
+    halt_p = sub.add_parser("halt", help="Set the persistent halt flag; blocks new entries")
+    halt_p.add_argument("--reason", default="manual operator halt")
+    sub.add_parser("resume", help="Clear the halt flag")
     args = parser.parse_args()
 
     if args.command == "step-entry":
@@ -322,6 +397,12 @@ def main() -> None:
     elif args.command == "step-exit":
         print(json.dumps(step_exit(), indent=2, default=str))
     elif args.command == "status":
+        print(json.dumps(status(), indent=2, default=str))
+    elif args.command == "halt":
+        set_halt(True, args.reason)
+        print(json.dumps(status(), indent=2, default=str))
+    elif args.command == "resume":
+        set_halt(False)
         print(json.dumps(status(), indent=2, default=str))
 
 
