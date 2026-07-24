@@ -135,6 +135,61 @@ single manual trade before re-running the full 232-call batch, and the
 corrected run shows 100% success rate, which is itself a good sign the
 fix was complete rather than partial.
 
+### Full rigor suite (Joey's due-diligence list, before touching the strategy logic further)
+
+Confirmed directly from the code: entry is always the real quoted ask,
+exit always the real quoted bid (never midpoint, never theoretical).
+"+146.6%" is return on total account equity ($2,500 base, $250/10%
+allocated per trade) — the underlying per-contract return is the
+1263.8bps/trade expectancy figure.
+
+| | 0DTE | 1DTE |
+|---|---|---|
+| Win rate | 45.7% | 47.4% |
+| Profit factor | 1.69 | 1.70 |
+| Payoff ratio (avg win / avg loss) | 2.01 | 1.89 |
+| Avg winner / avg loser | $169 / -$84 | $98 / -$52 |
+| Longest losing streak | 5 | 5 |
+| Top 3 trades' share of total profit | **43.3%** | **45.1%** |
+| Top 5 trades' share of total profit | **66.8%** | **65.5%** |
+| Sharpe (annualized) | 3.09 | 3.09 |
+| Max drawdown | 15.1% | 8.7% |
+| Total return | +146.6% | +88.6% |
+
+**Real concern, not glossed over**: return concentration. ~2/3 of total
+profit comes from 5 of 116 trades (4.3% of trades). This is a convexity-
+driven edge, not a smoothly distributed one -- expected for a positive-
+payoff-ratio leveraged strategy, but it means the headline Sharpe/total-
+return numbers overstate how a typical month would actually feel.
+
+**Cost stress** (0DTE): no-extra-cost 146.6% -> +1 tick 130.5% -> +2 tick
+114.6% -> +5bp 145.9% -> +10bp 145.4%. Survives comfortably at every
+level -- tick-based costs bite harder than bps here since ticks are a
+larger fraction of these smaller option premiums, but even +2 ticks
+round-trip the edge stays strongly positive.
+
+**Out-of-sample split**: both halves stay positive (0DTE: +104.1%
+first half n=58, +42.5% second half n=58; 1DTE: +63.0% vs +25.6%) --
+doesn't flip to a loser, but there's real decay in magnitude, not flat.
+Stated plainly rather than only reporting the flattering full-sample
+number.
+
+**$1,000/trade instead of $250**: total return scales to +586.4% (0DTE)
+but max drawdown scales from 15.1% to **70.1%**, not proportionally --
+fixed-notional sizing means a losing streak eats a much bigger bite of
+the same $2,500 base at 40% allocation vs 10%. Also a real practical
+gap the simulator doesn't model: it keeps applying $1,000/trade even
+once equity is depleted, which isn't achievable in practice. More
+profit, meaningfully more real risk -- not a free scaling.
+
+**Long vs. short breakdown** -- direct answer to "does shorting/puts
+work better with real data": within this signal, **puts already
+slightly outperform calls** (0DTE: shorts +83.8% n=60 vs longs +62.8%
+n=56; 1DTE: shorts +49.3% vs longs +39.4%). Different mechanism than
+the older weakest-momentum put thesis below though -- this short side
+comes from the independently-validated DAX-down-move signal, not a
+"short the weakest stock" selector.
+
 ## What's still queued
 
 - European lead signal (SPY shares vs. 0DTE/1DTE/0.40-delta options, +

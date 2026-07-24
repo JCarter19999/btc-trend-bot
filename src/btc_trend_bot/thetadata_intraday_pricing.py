@@ -82,3 +82,49 @@ def real_first_hour_option_trade(symbol: str, trade_date: date, direction: int, 
         "expiration": expiration, "strike": strike, "right": right,
         "entry_ask": entry_fill, "exit_bid": exit_fill, "net_return": exit_fill / entry_fill - 1,
     }
+
+
+def real_first_hour_option_trade_with_entry_delays(symbol: str, trade_date: date, direction: int, dte_days: int,
+                                                     spot_at_entry: float, delays_seconds: tuple[int, ...] = (0, 5, 30, 60)
+                                                     ) -> dict | None:
+    """Same trade, but returns net_return at SEVERAL entry-delay scenarios
+    from a single quote pull (the 09:29-09:35 window already covers up to
+    5 minutes of delay) -- avoids re-pulling the API once per delay
+    scenario. Exit is always at the fixed ~10:30 target regardless of
+    entry delay (the signal's exit rule doesn't shift with entry timing)."""
+    client = get_client()
+    right = "call" if direction > 0 else "put"
+
+    expirations = client.option_list_expirations(symbol=symbol)
+    exp_dates = pd.to_datetime(expirations["expiration"]).dt.date
+    future_exps = sorted(d for d in exp_dates.unique() if d >= trade_date)
+    if len(future_exps) <= dte_days:
+        return None
+    expiration = future_exps[dte_days]
+
+    strike = find_nearest_strike(symbol, expiration, spot_at_entry)
+    if strike is None:
+        return None
+
+    entry_quotes = client.option_history_quote(
+        symbol=symbol, expiration=expiration, strike=f"{strike:.2f}", right=right,
+        date=trade_date, interval="1m", start_time="09:29:00", end_time="09:35:00")
+    exit_quotes = client.option_history_quote(
+        symbol=symbol, expiration=expiration, strike=f"{strike:.2f}", right=right,
+        date=trade_date, interval="1m", start_time="10:25:00", end_time="10:35:00")
+    exit_q = _nearest_quote(exit_quotes, EXIT_TIME)
+    if exit_q is None:
+        return None
+    exit_fill = max(exit_q["bid"], 0.0)
+
+    out = {"expiration": expiration, "strike": strike, "right": right, "exit_bid": exit_fill}
+    for delay in delays_seconds:
+        total_seconds = ENTRY_TIME.hour * 3600 + ENTRY_TIME.minute * 60 + delay
+        target = time(total_seconds // 3600, (total_seconds % 3600) // 60, total_seconds % 60)
+        entry_q = _nearest_quote(entry_quotes, target)
+        if entry_q is None or entry_q["ask"] <= 0:
+            out[f"net_return_delay{delay}s"] = None
+        else:
+            out[f"entry_ask_delay{delay}s"] = entry_q["ask"]
+            out[f"net_return_delay{delay}s"] = exit_fill / entry_q["ask"] - 1
+    return out
