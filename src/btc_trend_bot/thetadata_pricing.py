@@ -27,6 +27,22 @@ import pandas as pd
 _client = None
 
 
+def reset_client() -> None:
+    """Force the next get_client() call to build a fresh ThetaClient.
+    Needed because a single long-running process making many hundred
+    sequential option_history_eod calls was found to degrade over time and
+    eventually fail 100% of subsequent calls (confirmed directly: a
+    background run resolved ~35% of dates through its first ~550 calls,
+    then ZERO of the next ~740, while every one of those same failing
+    dates succeeded immediately when re-tried in a fresh process/client).
+    Root cause not further isolated (thetadata client/terminal connection
+    or resource exhaustion, not a per-date data issue) -- this is a
+    pragmatic mitigation (periodic + on-failure reset), not a fix of the
+    underlying library behavior."""
+    global _client
+    _client = None
+
+
 def get_client():
     global _client
     if _client is None:
@@ -96,6 +112,91 @@ def real_quote_on_date(symbol: str, expiration: date, strike: float, right: str,
     if row["bid"] <= 0 and row["ask"] <= 0:
         return None
     return {"bid": float(row["bid"]), "ask": float(row["ask"]), "volume": float(row.get("volume", 0))}
+
+
+def build_option_chain(symbol: str, on_date: date, max_dte: int | None = None,
+                        two_sided_only: bool = True) -> pd.DataFrame:
+    """Full real options chain for `symbol` as it traded on `on_date` -- every
+    expiration, every strike, both rights, in one ThetaData call rather than
+    looping expiration_list x strike_list x quote calls. Returns an empty
+    frame (not a fabricated one) if nothing is available for that date.
+
+    `two_sided_only` drops quotes ThetaData returned with bid<=0 and ask<=0
+    (no real market that day for that contract) -- same "don't paper over
+    missing data" convention as real_quote_on_date above.
+    """
+    client = get_client()
+    try:
+        chain = client.option_history_eod(
+            start_date=on_date, end_date=on_date, symbol=symbol,
+            expiration="*", strike="*", right="both", max_dte=max_dte)
+    except Exception:
+        return pd.DataFrame()
+    if chain is None or chain.empty:
+        return pd.DataFrame()
+    if two_sided_only:
+        chain = chain[(chain["bid"] > 0) | (chain["ask"] > 0)]
+    chain = chain.sort_values(["expiration", "strike", "right"]).reset_index(drop=True)
+    chain["dte"] = (pd.to_datetime(chain["expiration"]).dt.date - on_date).apply(lambda d: d.days)
+    chain["mid"] = (chain["bid"] + chain["ask"]) / 2.0
+    return chain
+
+
+def real_atm_iv_on_date(symbol: str, on_date: date, target_dte: int) -> float | None:
+    """Real ATM implied vol on a given date, solved from real quoted mid
+    prices via implied_greeks.implied_volatility (inverts Black-Scholes
+    against the real market price -- not a realized-vol proxy). One
+    option-chain fetch per date.
+
+    Deliberately takes NO external spot argument. This project's daily
+    OHLCV (data/real/*.csv) is dividend/split-ADJUSTED (auto_adjust=True,
+    per CLAUDE.md's convention for feature consistency) -- but real option
+    strikes are fixed, unadjusted nominal dollar levels. Feeding an
+    adjusted close into a Black-Scholes solve as "spot" silently mismatches
+    strike-vs-spot moneyness (confirmed directly: on 2021-06-01, the
+    adjusted close was $390.96 while strikes priced consistent with a true
+    spot near $420 -- a ~7% error that would make a nominally "ATM" pick
+    actually deep ITM relative to true spot and badly bias the IV solve, or
+    fail the solve outright). Fixed via PUT-CALL PARITY instead: for the
+    expiration nearest `target_dte`, the strike where the real call mid and
+    put mid are closest together is (by parity, C-P=S-K*exp(-rT)~=S-K at
+    short maturities) the true at-the-money strike, and true spot ~= that
+    strike + (call_mid - put_mid) -- both derived entirely from real
+    quotes, no external/adjusted price series involved at all.
+
+    Returns None (not a fabricated value) if the chain isn't available for
+    that date or no solvable IV exists in it."""
+    from .implied_greeks import implied_volatility
+
+    chain = build_option_chain(symbol, on_date, max_dte=target_dte + 15)
+    if chain.empty:
+        return None
+    dtes = chain["dte"].unique()
+    if len(dtes) == 0:
+        return None
+    nearest_dte = min(dtes, key=lambda d: abs(d - target_dte))
+    exp_chain = chain[chain["dte"] == nearest_dte]
+    calls = exp_chain[exp_chain["right"].str.upper() == "CALL"].drop_duplicates("strike").set_index("strike")
+    puts = exp_chain[exp_chain["right"].str.upper() == "PUT"].drop_duplicates("strike").set_index("strike")
+    common_strikes = calls.index.intersection(puts.index)
+    common_strikes = [k for k in common_strikes if calls.loc[k, "mid"] > 0 and puts.loc[k, "mid"] > 0]
+    if not common_strikes:
+        return None
+
+    gaps = {k: abs(calls.loc[k, "mid"] - puts.loc[k, "mid"]) for k in common_strikes}
+    atm_strike = min(gaps, key=gaps.get)
+    call_mid, put_mid = float(calls.loc[atm_strike, "mid"]), float(puts.loc[atm_strike, "mid"])
+    implied_spot = atm_strike + (call_mid - put_mid)  # put-call parity, r*T~0 approximation at this DTE
+
+    years_to_expiry = nearest_dte / 365.0
+    ivs = []
+    call_iv = implied_volatility(call_mid, implied_spot, atm_strike, years_to_expiry, "call")
+    put_iv = implied_volatility(put_mid, implied_spot, atm_strike, years_to_expiry, "put")
+    if call_iv is not None:
+        ivs.append(call_iv)
+    if put_iv is not None:
+        ivs.append(put_iv)
+    return float(np.mean(ivs)) if ivs else None
 
 
 def real_option_leg_trade(symbol: str, signal_date: date, entry_date: date, exit_date: date,
@@ -173,5 +274,65 @@ def real_straddle_trade(symbol: str, signal_date: date, entry_date: date, exit_d
         "expiration": expiration, "strike": strike,
         "entry_premium": entry_fill, "exit_premium": exit_fill,
         "call_entry_ask": call_entry["ask"], "put_entry_ask": put_entry["ask"],
+        "net_return": net_return,
+    }
+
+
+def real_short_strangle_trade(symbol: str, signal_date: date, entry_date: date, exit_date: date,
+                               spot_at_signal: float, target_dte: int,
+                               call_moneyness: float, put_moneyness: float,
+                               tick_stress: float = 0.0, bps_stress: float = 0.0) -> dict | None:
+    """Real SHORT strangle: sell an OTM call + OTM put at two independent
+    strikes, same expiration (each strike found on its own target moneyness
+    -- unlike a straddle, a strangle's two legs are never the same strike).
+    Opposite fill convention from every long structure in this module: we
+    SELL at the real bid (both legs) to open, and BUY BACK at the real ask
+    (both legs) to close -- entry credit collected up front, exit debit paid
+    to close. net_return is on the credit collected: +1.0 (=+100%) means
+    both legs expired/closed worthless (max gain, credit fully kept);
+    net_return is NOT floored at -1.0 the way a long option's is -- a
+    strangle that moves deep ITM on either leg before exit can cost several
+    multiples of the credit collected, and that should show up here as
+    net_return << -1.0, not be silently capped.
+
+    tick_stress / bps_stress apply an extra fill-quality haircut on TOP of
+    the real quotes (sell-side fills reduced, buy-side fills increased) --
+    used for the cost-stress check, not the baseline result.
+    """
+    expiration = find_nearest_expiration(symbol, signal_date, target_dte)
+    if expiration is None or expiration <= exit_date:
+        return None
+    call_strike = find_nearest_strike(symbol, expiration, spot_at_signal * call_moneyness)
+    put_strike = find_nearest_strike(symbol, expiration, spot_at_signal * put_moneyness)
+    if call_strike is None or put_strike is None or call_strike == put_strike:
+        return None
+
+    call_entry = real_quote_on_date(symbol, expiration, call_strike, "call", entry_date)
+    put_entry = real_quote_on_date(symbol, expiration, put_strike, "put", entry_date)
+    if call_entry is None or put_entry is None:
+        return None
+    call_exit = real_quote_on_date(symbol, expiration, call_strike, "call", exit_date)
+    put_exit = real_quote_on_date(symbol, expiration, put_strike, "put", exit_date)
+    if call_exit is None or put_exit is None:
+        return None
+
+    call_entry_bid = max(call_entry["bid"] - tick_stress, 0.0) * (1 - bps_stress)
+    put_entry_bid = max(put_entry["bid"] - tick_stress, 0.0) * (1 - bps_stress)
+    entry_credit = call_entry_bid + put_entry_bid
+    if entry_credit <= 0:
+        return None
+
+    call_exit_ask = (call_exit["ask"] + tick_stress) * (1 + bps_stress)
+    put_exit_ask = (put_exit["ask"] + tick_stress) * (1 + bps_stress)
+    exit_debit = call_exit_ask + put_exit_ask
+
+    net_return = 1.0 - exit_debit / entry_credit
+    return {
+        "expiration": expiration, "call_strike": call_strike, "put_strike": put_strike,
+        "entry_credit": entry_credit, "exit_debit": exit_debit,
+        "call_entry_bid": call_entry_bid, "put_entry_bid": put_entry_bid,
+        "call_exit_ask": call_exit_ask, "put_exit_ask": put_exit_ask,
+        "call_entry_price": call_entry["ask"], "put_entry_price": put_entry["ask"],
+        "call_exit_price": call_exit["bid"], "put_exit_price": put_exit["bid"],
         "net_return": net_return,
     }
