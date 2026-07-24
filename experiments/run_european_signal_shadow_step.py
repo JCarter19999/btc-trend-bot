@@ -51,16 +51,38 @@ Two invocations per trading day: `step-entry` (run ~13:32 UTC, just after
 US open) computes the signal and logs entry quotes; `step-exit` (run
 ~14:32 UTC, one hour later) logs exit quotes and realized returns at
 1/2/5 bps cost assumptions. Never submits a live order.
+
+Options books (added 2026-07-24, per Joey's explicit request to deploy the
+strong result -- this is the strategy that actually validated at +146.6%
+(0DTE) / +88.6% (1DTE) real total return in
+EQUITY_OPTIONS_REAL_DATA_RETEST.md section 3 on the research branch; the
+SPY-shares primary book above was always the weaker reference line, not
+this). Two more capital-tracked books on the SAME `eligible_top_quartile`
+signal/direction computed above -- entry ALWAYS at the real live quoted
+ask, exit ALWAYS at the real live quoted bid (never midpoint/theoretical),
+via ThetaData's `option_snapshot_quote` (confirmed working for real-time
+SPY 0DTE/1DTE quotes before building this -- see the parent session's
+verification). ATM strike (nearest listed strike to live SPY spot),
+call if direction=+1 / put if direction=-1, same $2,500 base / $250
+fixed-premium-per-trade sizing the backtest used. 0DTE expiration = the
+nearest listed SPY expiration >= today; 1DTE = the next one after that
+(skips weekends/holidays automatically since SPY doesn't list expirations
+on non-trading days) -- both variants still enter/exit within the same
+~9:30/10:30 ET window as the stock book, only the contract's remaining
+life differs, matching the backtest's exact convention. A ThetaData quote
+failure for either leg is logged as a data-quality flag and skipped, never
+silently faked -- same discipline as the stock instruments above.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import warnings
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +98,76 @@ INSTRUMENTS = ("SPY", "QQQ")
 COST_TIERS_BPS = (1.0, 2.0, 5.0)
 MIN_HISTORY_FOR_PERCENTILE = 20
 US_OPEN_UTC = pd.Timestamp("13:30:00").time()
+
+# --- Options books (0DTE/1DTE), added 2026-07-24 ---
+OPTIONS_VARIANTS = ("0dte", "1dte")
+OPTIONS_UNDERLYING = "SPY"
+OPTIONS_INITIAL_CAPITAL = 2500.0
+OPTIONS_PREMIUM_ALLOCATION = 250.0  # fixed premium per trade, matching the backtest's sizing convention
+_THETADATA_ENV_PATH = Path("/home/joey/.config/btc-trend-bot/thetadata.env")
+_thetadata_client = None
+
+
+def _get_thetadata_client():
+    """Lazy singleton, same auth-loading robustness as
+    equity_v2_4_research/src/btc_trend_bot/thetadata_pricing.py's
+    get_client() -- don't depend on the launching shell (esp. a systemd
+    unit) having sourced THETADATA_API_KEY."""
+    global _thetadata_client
+    if _thetadata_client is None:
+        if "THETADATA_API_KEY" not in os.environ and _THETADATA_ENV_PATH.exists():
+            for line in _THETADATA_ENV_PATH.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    os.environ.setdefault(key.strip(), value.strip())
+        from thetadata import ThetaClient
+        _thetadata_client = ThetaClient(dataframe_type="pandas")
+    return _thetadata_client
+
+
+def _options_expirations_0dte_1dte(today: "date") -> tuple["date", "date"] | tuple[None, None]:
+    client = _get_thetadata_client()
+    try:
+        exps = client.option_list_expirations(symbol=OPTIONS_UNDERLYING)
+        exps["expiration"] = pd.to_datetime(exps["expiration"]).dt.date
+        future = sorted(set(e for e in exps["expiration"] if e >= today))
+        if len(future) < 2:
+            return None, None
+        return future[0], future[1]
+    except Exception:
+        return None, None
+
+
+def _options_nearest_strike(expiration: "date", spot: float) -> float | None:
+    client = _get_thetadata_client()
+    try:
+        strikes = client.option_list_strikes(symbol=OPTIONS_UNDERLYING, expiration=expiration)
+        strike_list = strikes["strike"].tolist()
+        if not strike_list:
+            return None
+        return float(min(strike_list, key=lambda s: abs(s - spot)))
+    except Exception:
+        return None
+
+
+def _options_live_quote(expiration: "date", strike: float, right: str) -> tuple[float, float] | tuple[None, None]:
+    """right: 'C' or 'P'. Returns (bid, ask) from a real live ThetaData
+    snapshot -- never a theoretical/midpoint price."""
+    client = _get_thetadata_client()
+    try:
+        res = client.option_snapshot_quote(
+            symbol=OPTIONS_UNDERLYING, expiration=expiration, strike=str(strike),
+            right="CALL" if right == "C" else "PUT")
+        if res is None or res.empty:
+            return None, None
+        row = res.iloc[0]
+        bid, ask = float(row["bid"]), float(row["ask"])
+        if bid <= 0 or ask <= 0:
+            return None, None
+        return bid, ask
+    except Exception:
+        return None, None
 
 # Primary tracked $2,500 paper book: SPY, DAX-top-quartile-alone (NOT the
 # DAX+Asia joint filter). Chosen deliberately over the DAX+Asia arm despite
@@ -138,6 +230,21 @@ CREATE TABLE IF NOT EXISTS trade_log (
 CREATE TABLE IF NOT EXISTS kv_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS options_trade_log (
+    date              TEXT NOT NULL,
+    variant           TEXT NOT NULL,
+    right             TEXT,
+    expiration        TEXT,
+    strike            REAL,
+    direction         INTEGER,
+    entry_time        TEXT,
+    entry_ask         REAL,
+    exit_time         TEXT,
+    exit_bid          REAL,
+    net_return        REAL,
+    data_quality_flags TEXT,
+    PRIMARY KEY (date, variant)
 );
 """
 
@@ -399,6 +506,35 @@ def step_entry() -> dict:
             entries[symbol] = price
         conn.commit()
 
+        # Options books (0DTE/1DTE) -- only on the SAME eligibility the
+        # backtest actually validated (eligible_top_quartile), not the daily
+        # or Asia-gated arms. A quote/data failure here is logged and
+        # skipped, never faked -- matches the stock legs' own discipline.
+        options_entries = {}
+        if eligible_top_quartile and spy_entry_price is not None:
+            right = "C" if direction > 0 else "P"
+            exp_0dte, exp_1dte = _options_expirations_0dte_1dte(today.date())
+            if exp_0dte is None:
+                flags["options_expirations_missing"] = True
+            else:
+                for variant, expiration in (("0dte", exp_0dte), ("1dte", exp_1dte)):
+                    strike = _options_nearest_strike(expiration, spy_entry_price)
+                    if strike is None:
+                        flags[f"options_{variant}_strike_missing"] = True
+                        continue
+                    bid, ask = _options_live_quote(expiration, strike, right)
+                    if ask is None:
+                        flags[f"options_{variant}_quote_missing"] = True
+                        continue
+                    conn.execute(
+                        "INSERT INTO options_trade_log(date,variant,right,expiration,strike,direction,"
+                        "entry_time,entry_ask,data_quality_flags) VALUES(?,?,?,?,?,?,?,?,?)",
+                        (str(today.date()), variant, right, str(expiration), strike, direction,
+                         _utc_now(), ask, json.dumps(flags)))
+                    options_entries[variant] = {"right": right, "expiration": str(expiration),
+                                                 "strike": strike, "entry_ask": ask}
+            conn.commit()
+
         return {"status": "ok", "date": str(today.date()), "dax_direction": direction,
                 "dax_abs_move": dax_abs_move, "dax_percentile": dax_pctile,
                 "asia_magnitude": asia_magnitude, "asia_percentile": asia_pctile,
@@ -409,7 +545,7 @@ def step_entry() -> dict:
                 "eligible_top_quartile_small_gap": eligible_small_gap,
                 "eligible_top_quartile_low_dax_range": eligible_low_dax_range,
                 "eligible_top_quartile_calm_regime": eligible_calm_regime,
-                "entries": entries, "flags": flags}
+                "entries": entries, "options_entries": options_entries, "flags": flags}
     finally:
         conn.close()
 
@@ -440,9 +576,25 @@ def step_exit() -> dict:
                  str(today.date()), symbol))
             results[symbol] = {"exit_price": exit_price, "gross_return": gross, **nets}
 
+        options_results = {}
+        for variant in OPTIONS_VARIANTS:
+            row = conn.execute(
+                "SELECT * FROM options_trade_log WHERE date=? AND variant=?", (str(today.date()), variant)).fetchone()
+            if row is None or row["entry_ask"] is None or row["exit_bid"] is not None:
+                continue  # no entry logged, or already closed
+            expiration = datetime.strptime(row["expiration"], "%Y-%m-%d").date()
+            bid, ask = _options_live_quote(expiration, row["strike"], row["right"])
+            if bid is None:
+                continue  # real quote unavailable at exit time -- leave pending rather than fake a price
+            net_return = bid / row["entry_ask"] - 1.0
+            conn.execute(
+                "UPDATE options_trade_log SET exit_time=?, exit_bid=?, net_return=? WHERE date=? AND variant=?",
+                (_utc_now(), bid, net_return, str(today.date()), variant))
+            options_results[variant] = {"exit_bid": bid, "entry_ask": row["entry_ask"], "net_return": net_return}
+
         conn.execute("UPDATE signal_log SET status='completed', updated_at=? WHERE date=?", (_utc_now(), str(today.date())))
         conn.commit()
-        return {"status": "ok", "date": str(today.date()), "results": results}
+        return {"status": "ok", "date": str(today.date()), "results": results, "options_results": options_results}
     finally:
         conn.close()
 
@@ -461,6 +613,21 @@ def get_primary_equity_curve(conn: sqlite3.Connection) -> pd.DataFrame:
     if trades.empty:
         return trades
     trades["equity"] = PRIMARY_INITIAL_CAPITAL * (1 + trades["net_return"]).cumprod()
+    trades["drawdown"] = 1 - trades["equity"] / trades["equity"].cummax()
+    return trades
+
+
+def get_options_equity_curve(conn: sqlite3.Connection, variant: str) -> pd.DataFrame:
+    """Compounding $2,500 equity curve for the 0DTE/1DTE options book,
+    fixed $250 premium per trade (not full-notional compounding on the
+    option's own return, matching the backtest's fixed_premium_250 sizing)."""
+    trades = pd.read_sql_query(
+        "SELECT date, net_return FROM options_trade_log WHERE variant=? AND net_return IS NOT NULL ORDER BY date",
+        conn, params=(variant,))
+    if trades.empty:
+        return trades
+    trades["pnl"] = trades["net_return"] * OPTIONS_PREMIUM_ALLOCATION
+    trades["equity"] = OPTIONS_INITIAL_CAPITAL + trades["pnl"].cumsum()
     trades["drawdown"] = 1 - trades["equity"] / trades["equity"].cummax()
     return trades
 
@@ -522,6 +689,19 @@ def status() -> dict:
                 "win_rate": float((curve["net_return"] > 0).mean()),
             })
 
+        options_books = {}
+        for variant in OPTIONS_VARIANTS:
+            ocurve = get_options_equity_curve(conn, variant)
+            book = {"initial_capital": OPTIONS_INITIAL_CAPITAL, "trades_taken": int(len(ocurve))}
+            if len(ocurve):
+                book.update({
+                    "current_equity": float(ocurve["equity"].iloc[-1]),
+                    "total_return_pct": float((ocurve["equity"].iloc[-1] / OPTIONS_INITIAL_CAPITAL - 1) * 100),
+                    "max_drawdown_pct": float(ocurve["drawdown"].max() * 100),
+                    "win_rate": float((ocurve["net_return"] > 0).mean()),
+                })
+            options_books[variant] = book
+
         return {
             "halted": bool(halted_row and halted_row["value"] == "true"),
             "halt_reason": halt_reason_row["value"] if halt_reason_row else "",
@@ -530,8 +710,11 @@ def status() -> dict:
             "pending_position": dict(pending) if pending else None,
             "most_recent_signal": dict(recent_signal) if recent_signal else None,
             "primary_book": primary,
+            "options_books": options_books,
             "arm_performance": arm_stats,
-            "note": "Shadow paper only -- not promoted to dashboard/rankings/email until arms show real positive results over enough trades (see CLAUDE.md promotion gates).",
+            "note": "Shadow paper only -- not promoted to dashboard/rankings/email until arms show real positive results over enough trades (see CLAUDE.md promotion gates). "
+                    "Options books (0DTE/1DTE) added 2026-07-24 -- this is the strategy that actually validated "
+                    "at +146.6%/+88.6% real total return; the SPY-shares primary_book above is the weaker reference line.",
         }
     finally:
         conn.close()

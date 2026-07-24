@@ -315,6 +315,43 @@ here — this deployment stands on the real-data backtest results in
 file — "promoted" here means "gets a real tracked equity curve and a
 dashboard/email presence," not "trading real money."
 
+**Options books (0DTE/1DTE), added 2026-07-24 — this is the strong result,
+the SPY-shares book above is the weak reference line.** The originally-
+deferred "options shadow overlay" from the scope note above, built now on
+Joey's explicit instruction ("deploy the strong DAX result with the
+0DTE/1DTE options") once the research branch's real-ThetaData backtest
+validated it decisively (`EQUITY_OPTIONS_REAL_DATA_RETEST.md` section 3:
++146.6% (0DTE) / +88.6% (1DTE) real total return, full rigor suite — cost
+stress, out-of-sample split, P&L decomposition, mechanism falsification
+all passed). Two more $2,500 capital-tracked books, same
+`eligible_top_quartile` signal/direction as the primary book, $250 fixed
+premium per trade (matching the backtest's sizing exactly) — ATM strike
+(nearest listed strike to live SPY spot), call if direction=+1 / put if
+direction=-1, entry always at the real live quoted ask, exit always at the
+real live quoted bid (never midpoint/theoretical), via ThetaData's
+`option_snapshot_quote`. 0DTE expiration = nearest listed SPY expiration
+&gt;= today; 1DTE = the next one after that. **Live real-time ThetaData
+options access confirmed working before this was built** (unlike stock
+tick/quote data, which turned out to need a separate, unpurchased
+subscription tier per `EQUITY_ORDERFLOW_TICK_STUDY.md` on the research
+branch — options snapshot quotes are covered by the existing Options Value
+tier). No new systemd units needed: this is built into the SAME
+`run_european_signal_shadow_step.py` script and the SAME
+`european-signal-shadow-entry/exit` timers (13:32/14:32 UTC) as the
+primary book above — `options_trade_log` is a new table in the same
+ledger (`runtime/european_signal_shadow.sqlite3`), not a new file. Full
+pipeline dry-run tested against a scratch database with real live
+ThetaData quotes (entry ask -> exit bid a few seconds later, correct P&L
+and equity-curve math) before trusting the production path; today's real
+signal (2026-07-24) wasn't top-quartile eligible so the options branch
+hasn't fired live yet as of this writing — first real options entry will
+be whenever `eligible_top_quartile` next comes up true on a scheduled run.
+`status()`'s `options_books` key reports both variants' equity/return/
+drawdown/win-rate once trades accumulate. A quote/expiration/strike
+lookup failure is logged as a data-quality flag and the leg is skipped,
+never faked — same discipline as every real-data retest on the research
+branch.
+
 ## Live paper deployments: three, running in parallel (2026-07-23)
 
 Three independent live paper deployments run in parallel, each with its own
