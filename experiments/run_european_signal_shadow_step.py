@@ -25,6 +25,28 @@ used ONLY to define the percentile threshold; every trade's entry/exit
 price and realized P&L below is 100% live, real-time, forward-only -- no
 historical trade is fabricated.
 
+Calm-regime research arms (added 2026-07-24, per Joey's "freeze the
+primary arm, accumulate independent evidence" framing after
+EDGE_DECOMPOSITION_SECTOR_AND_MARKET_STATE.md on the research branch
+found the DAX-top-quartile edge is stronger in calm conditions --
+below-median VIX/overnight-gap/DAX-session-range -- not turbulent ones,
+opposite of the naive "vol regime" hypothesis). Three more expanding-
+percentile flags computed the same no-lookahead way as the existing
+top-quartile/Asia filters, seeded from the same seed CSV (extended with
+vix_prior_close/gap_pct/dax_range_pct columns, same 2023-09 to 2026-07
+window, same research-branch methodology): eligible_top_quartile_low_vix,
+eligible_top_quartile_small_gap, eligible_top_quartile_low_dax_range, and
+eligible_top_quartile_calm_regime (all three at once). Each requires
+eligible_top_quartile already being true (same nesting convention as the
+existing Asia arm) AND the state variable's expanding percentile being
+BELOW median (< 0.5) -- calm, not extreme, matching exactly what the
+research backtest validated (median split, not a more aggressive
+quartile cut that would be overfit to a 58-trade-per-bucket sample).
+**Pure research/logging arms -- the PRIMARY_* constants and the
+capital-tracked equity curve are completely untouched.** These flags
+exist to accumulate independent live evidence for a future promotion
+decision, not to change what's live today.
+
 Two invocations per trading day: `step-entry` (run ~13:32 UTC, just after
 US open) computes the signal and logs entry quotes; `step-exit` (run
 ~14:32 UTC, one hour later) logs exit quotes and realized returns at
@@ -84,6 +106,16 @@ CREATE TABLE IF NOT EXISTS signal_log (
     eligible_daily              INTEGER,
     eligible_top_quartile       INTEGER,
     eligible_top_quartile_asia  INTEGER,
+    vix_prior_close      REAL,
+    vix_percentile        REAL,
+    gap_pct               REAL,
+    gap_percentile         REAL,
+    dax_range_pct         REAL,
+    dax_range_percentile   REAL,
+    eligible_top_quartile_low_vix       INTEGER,
+    eligible_top_quartile_small_gap     INTEGER,
+    eligible_top_quartile_low_dax_range INTEGER,
+    eligible_top_quartile_calm_regime   INTEGER,
     data_quality_flags   TEXT,
     status               TEXT NOT NULL,
     created_at           TEXT NOT NULL,
@@ -114,11 +146,33 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+_NEW_SIGNAL_LOG_COLUMNS = (
+    # Added 2026-07-24 for the calm-regime research arms -- CREATE TABLE IF
+    # NOT EXISTS does NOT alter an already-existing table (the ledger was
+    # already created empty, pre-migration, so this bit us on the very
+    # first post-edit run: "no such column: vix_prior_close"). Explicit
+    # ALTER TABLE migration, idempotent (ignores "duplicate column").
+    ("vix_prior_close", "REAL"), ("vix_percentile", "REAL"),
+    ("gap_pct", "REAL"), ("gap_percentile", "REAL"),
+    ("dax_range_pct", "REAL"), ("dax_range_percentile", "REAL"),
+    ("eligible_top_quartile_low_vix", "INTEGER"),
+    ("eligible_top_quartile_small_gap", "INTEGER"),
+    ("eligible_top_quartile_low_dax_range", "INTEGER"),
+    ("eligible_top_quartile_calm_regime", "INTEGER"),
+)
+
+
 def _conn() -> sqlite3.Connection:
     LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(LEDGER_PATH))
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    for col, sqltype in _NEW_SIGNAL_LOG_COLUMNS:
+        try:
+            conn.execute(f"ALTER TABLE signal_log ADD COLUMN {col} {sqltype}")
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
     conn.commit()
     return conn
 
@@ -131,34 +185,76 @@ def _load_seed() -> pd.DataFrame:
 
 def _percentile_history(conn: sqlite3.Connection, column: str, today: "pd.Timestamp") -> np.ndarray:
     """Seed history (real, prior, historical) + any live shadow days logged
-    so far that are strictly before today -- expanding, never full-sample."""
+    so far that are strictly before today -- expanding, never full-sample.
+    Drops NaN explicitly: `nan < x` is always False in numpy, so an
+    unfiltered NaN would silently deflate every percentile that uses this
+    column (only gap_pct's seed has any, 17/629, but filtering here once
+    protects every current and future caller, not just that column)."""
     seed = _load_seed()
-    seed_vals = seed[column].to_numpy()
+    seed_vals = seed[column].to_numpy(dtype=float)
     live = pd.read_sql_query(
         f"SELECT {column} FROM signal_log WHERE date < ? AND {column} IS NOT NULL", conn, params=(str(today),))
-    return np.concatenate([seed_vals, live[column].to_numpy()])
+    live_vals = live[column].to_numpy(dtype=float) if len(live) else np.array([], dtype=float)
+    combined = np.concatenate([seed_vals, live_vals])
+    return combined[~np.isnan(combined)]
 
 
-def _fetch_dax_pre_open_return(today: "pd.Timestamp") -> tuple[float, dict]:
+def _fetch_dax_pre_open_return(today: "pd.Timestamp") -> tuple[float, float | None, dict]:
     """DAX's cumulative return from today's session open through the last
-    5-minute bar closed strictly before 13:30 UTC. Fresh intraday pull,
-    separate from the historical 60m backtest data."""
+    5-minute bar closed strictly before 13:30 UTC, plus the same window's
+    range (high-low)/open for the calm-regime research arms. Fresh
+    intraday pull, separate from the historical 60m backtest data."""
     flags = {}
     df = yf.download("^GDAXI", interval="5m", period="2d", progress=False, auto_adjust=True)
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
     df.columns = [str(c).lower() for c in df.columns]
     if df.empty:
-        return float("nan"), {"dax_missing_data": True}
+        return float("nan"), None, {"dax_missing_data": True}
     df = df[df.index.date == today.date()]
     df = df[df.index.time < US_OPEN_UTC]
     if len(df) < 2:
-        return float("nan"), {"dax_missing_data": True, "dax_bars_before_cutoff": len(df)}
+        return float("nan"), None, {"dax_missing_data": True, "dax_bars_before_cutoff": len(df)}
     ret = float(df["close"].iloc[-1] / df["open"].iloc[0] - 1)
+    dax_range_pct = float((df["high"].max() - df["low"].min()) / df["open"].iloc[0])
     age_seconds = (datetime.now(timezone.utc) - df.index[-1].to_pydatetime()).total_seconds()
     if age_seconds > 3600:
         flags["dax_stale_data"] = True
-    return ret, flags
+    return ret, dax_range_pct, flags
+
+
+def _fetch_vix_prior_close(today: "pd.Timestamp") -> float | None:
+    """Prior trading day's ^VIX close -- deliberately NOT same-day (VIX at
+    13:30 UTC today isn't settled/known before the US-open decision)."""
+    df = yf.download("^VIX", interval="1d", period="10d", progress=False, auto_adjust=True)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df.columns = [str(c).lower() for c in df.columns]
+    if df.empty:
+        return None
+    prior = df[df.index.date < today.date()]
+    if prior.empty:
+        return None
+    return float(prior["close"].iloc[-1])
+
+
+def _fetch_spy_gap_pct(today: "pd.Timestamp", spy_entry_price: float | None) -> float | None:
+    """|today's SPY entry print - yesterday's SPY daily close| / yesterday's
+    close. Uses the same entry price already fetched for the trade log --
+    no extra live quote call."""
+    if spy_entry_price is None:
+        return None
+    df = yf.download("SPY", interval="1d", period="10d", progress=False, auto_adjust=True)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df.columns = [str(c).lower() for c in df.columns]
+    if df.empty:
+        return None
+    prior = df[df.index.date < today.date()]
+    if prior.empty:
+        return None
+    y_close = float(prior["close"].iloc[-1])
+    return abs(spy_entry_price - y_close) / y_close
 
 
 def _fetch_asia_returns(today: "pd.Timestamp") -> tuple[dict, dict]:
@@ -202,7 +298,7 @@ def step_entry() -> dict:
         if existing:
             return {"status": "already_processed", "date": str(today.date())}
 
-        dax_ret, dax_flags = _fetch_dax_pre_open_return(today)
+        dax_ret, dax_range_pct, dax_flags = _fetch_dax_pre_open_return(today)
         asia, asia_flags = _fetch_asia_returns(today)
         flags = {**dax_flags, **asia_flags}
 
@@ -244,20 +340,56 @@ def step_entry() -> dict:
             asia_pctile = float((asia_hist < asia_magnitude).mean()) if len(asia_hist) >= MIN_HISTORY_FOR_PERCENTILE else None
             eligible_top_quartile_asia = bool(eligible_top_quartile and asia_pctile is not None and asia_pctile >= 0.75)
 
+        # Calm-regime research arms -- pure logging, PRIMARY_* untouched.
+        # Fetch SPY entry price early so it can double as both the gap
+        # calculation input and (below) the actual trade_log entry price --
+        # avoids a second live quote call for the same value.
+        spy_entry_price = _current_quote("SPY")
+        if spy_entry_price is None:
+            flags["SPY_entry_missing"] = True
+        vix_prior_close = _fetch_vix_prior_close(today)
+        if vix_prior_close is None:
+            flags["vix_missing"] = True
+        gap_pct = _fetch_spy_gap_pct(today, spy_entry_price)
+        if gap_pct is None:
+            flags["gap_missing"] = True
+        if dax_range_pct is None:
+            flags["dax_range_missing"] = True
+
+        def _calm_pctile(column: str, value: float | None) -> float | None:
+            if value is None:
+                return None
+            hist = _percentile_history(conn, column, today)
+            return float((hist < value).mean()) if len(hist) >= MIN_HISTORY_FOR_PERCENTILE else None
+
+        vix_pctile = _calm_pctile("vix_prior_close", vix_prior_close)
+        gap_pctile = _calm_pctile("gap_pct", gap_pct)
+        dax_range_pctile = _calm_pctile("dax_range_pct", dax_range_pct)
+
+        eligible_low_vix = bool(eligible_top_quartile and vix_pctile is not None and vix_pctile < 0.5)
+        eligible_small_gap = bool(eligible_top_quartile and gap_pctile is not None and gap_pctile < 0.5)
+        eligible_low_dax_range = bool(eligible_top_quartile and dax_range_pctile is not None and dax_range_pctile < 0.5)
+        eligible_calm_regime = bool(eligible_low_vix and eligible_small_gap and eligible_low_dax_range)
+
         conn.execute(
             """INSERT INTO signal_log(date,dax_pre_open_return,dax_abs_move,dax_direction,dax_percentile,
                nikkei_return,hsi_return,shanghai_return,asia_magnitude,asia_percentile,
                eligible_daily,eligible_top_quartile,eligible_top_quartile_asia,
+               vix_prior_close,vix_percentile,gap_pct,gap_percentile,dax_range_pct,dax_range_percentile,
+               eligible_top_quartile_low_vix,eligible_top_quartile_small_gap,
+               eligible_top_quartile_low_dax_range,eligible_top_quartile_calm_regime,
                data_quality_flags,status,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (str(today.date()), dax_ret, dax_abs_move, direction, dax_pctile,
              asia.get("nikkei_return"), asia.get("hsi_return"), asia.get("shanghai_return"), asia_magnitude, asia_pctile,
              1, int(eligible_top_quartile), int(eligible_top_quartile_asia),
+             vix_prior_close, vix_pctile, gap_pct, gap_pctile, dax_range_pct, dax_range_pctile,
+             int(eligible_low_vix), int(eligible_small_gap), int(eligible_low_dax_range), int(eligible_calm_regime),
              json.dumps(flags), "pending_exit", _utc_now(), _utc_now()))
 
         entries = {}
         for symbol in INSTRUMENTS:
-            price = _current_quote(symbol)
+            price = spy_entry_price if symbol == "SPY" else _current_quote(symbol)
             if price is None:
                 flags[f"{symbol}_entry_missing"] = True
                 continue
@@ -272,6 +404,11 @@ def step_entry() -> dict:
                 "asia_magnitude": asia_magnitude, "asia_percentile": asia_pctile,
                 "eligible_top_quartile": eligible_top_quartile,
                 "eligible_top_quartile_asia": eligible_top_quartile_asia,
+                "vix_prior_close": vix_prior_close, "gap_pct": gap_pct, "dax_range_pct": dax_range_pct,
+                "eligible_top_quartile_low_vix": eligible_low_vix,
+                "eligible_top_quartile_small_gap": eligible_small_gap,
+                "eligible_top_quartile_low_dax_range": eligible_low_dax_range,
+                "eligible_top_quartile_calm_regime": eligible_calm_regime,
                 "entries": entries, "flags": flags}
     finally:
         conn.close()
@@ -348,14 +485,20 @@ def status() -> dict:
         recent_signal = conn.execute("SELECT * FROM signal_log ORDER BY date DESC LIMIT 1").fetchone()
         pending = conn.execute("SELECT * FROM signal_log WHERE status='pending_exit'").fetchone()
         trades = pd.read_sql_query(
-            "SELECT t.*, s.eligible_daily, s.eligible_top_quartile, s.eligible_top_quartile_asia "
+            "SELECT t.*, s.eligible_daily, s.eligible_top_quartile, s.eligible_top_quartile_asia, "
+            "s.eligible_top_quartile_low_vix, s.eligible_top_quartile_small_gap, "
+            "s.eligible_top_quartile_low_dax_range, s.eligible_top_quartile_calm_regime "
             "FROM trade_log t JOIN signal_log s ON t.date = s.date WHERE t.gross_return IS NOT NULL", conn)
 
         arm_stats = {}
         for symbol in INSTRUMENTS:
             sub = trades[trades.instrument == symbol]
             for arm_col, arm_name in [("eligible_daily", "daily"), ("eligible_top_quartile", "top_quartile"),
-                                       ("eligible_top_quartile_asia", "top_quartile_plus_asia")]:
+                                       ("eligible_top_quartile_asia", "top_quartile_plus_asia"),
+                                       ("eligible_top_quartile_low_vix", "top_quartile_plus_low_vix"),
+                                       ("eligible_top_quartile_small_gap", "top_quartile_plus_small_gap"),
+                                       ("eligible_top_quartile_low_dax_range", "top_quartile_plus_low_dax_range"),
+                                       ("eligible_top_quartile_calm_regime", "top_quartile_plus_calm_regime")]:
                 arm_trades = sub[sub[arm_col] == 1]
                 if arm_trades.empty:
                     continue

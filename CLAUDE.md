@@ -263,6 +263,40 @@ python experiments/run_european_signal_shadow_step.py halt --reason "..."   # bl
 python experiments/run_european_signal_shadow_step.py resume
 ```
 
+**Calm-regime research arms, added 2026-07-24 (pure logging, primary arm
+untouched):** the research branch's `EDGE_DECOMPOSITION_SECTOR_AND_MARKET_STATE.md`
+found the DAX-top-quartile edge is stronger in calm conditions
+(below-median VIX/overnight-gap/DAX-session-range), not turbulent ones —
+opposite of the naive "high-vol regime" hypothesis. Rather than change
+the live signal on a single backtest, per Joey's "primary arm stays
+untouched, filtered arms accumulate independent evidence" framing: four
+more expanding-percentile eligibility flags now get logged every day
+alongside the existing ones — `eligible_top_quartile_low_vix`,
+`eligible_top_quartile_small_gap`, `eligible_top_quartile_low_dax_range`,
+`eligible_top_quartile_calm_regime` (all three at once) — each nested
+under `eligible_top_quartile` (same convention as the existing Asia arm),
+each requiring the state variable's expanding percentile to be below
+median. Seeded the same no-lookahead way as the existing filters:
+`data/european_signal_percentile_seed.csv` gained three new columns
+(`vix_prior_close`, `gap_pct`, `dax_range_pct`) computed on the research
+branch for the same 629-day window. `PRIMARY_*` constants, the
+capital-tracked equity curve, and the actual trade direction/timing are
+completely unchanged — these are query-time filters on the same trades,
+not a new strategy. `status()`'s `arm_performance` now reports all seven
+arms per instrument.
+
+A real migration bug was caught before this went live: the ledger's
+`signal_log` table already existed (created empty, hours earlier) with
+the old schema — `CREATE TABLE IF NOT EXISTS` doesn't alter an existing
+table, so the new columns silently didn't exist until an explicit
+`ALTER TABLE` migration was added to `_conn()` (idempotent, ignores
+"duplicate column" so it's safe on both the already-existing ledger and
+any fresh one). A manual test invocation of `step-entry` outside the
+scheduled window also wrote a real (correctly rejected — DAX doesn't
+open until ~07:00 UTC) row for that day; deleted immediately since
+`step_entry()` skips days that already have a `signal_log` row and would
+otherwise have silently blocked the real scheduled entry later that day.
+
 **Scope note**: the research request that spawned this
 (`EUROPEAN LEAD SIGNAL... SYNTHETIC RESULTS + IMPLEMENTATION INSTRUCTIONS`,
 2026-07-23) specified a much larger 19-part system (10 statistical
