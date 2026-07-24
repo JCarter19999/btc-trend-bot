@@ -30,6 +30,21 @@ _client = None
 def get_client():
     global _client
     if _client is None:
+        import os
+        if "THETADATA_API_KEY" not in os.environ:
+            # Don't depend on the launching shell having sourced this --
+            # a background run launched without it fails opaquely with
+            # AuthenticationError deep inside ThetaClient.__init__ (bit us
+            # once: tail hedge re-test launched from a fresh shell after a
+            # context reset had no THETADATA_API_KEY exported).
+            env_path = "/home/joey/.config/btc-trend-bot/thetadata.env"
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            key, _, value = line.partition("=")
+                            os.environ.setdefault(key.strip(), value.strip())
         from thetadata import ThetaClient
         _client = ThetaClient(dataframe_type="pandas")
     return _client

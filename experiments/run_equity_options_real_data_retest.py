@@ -99,10 +99,14 @@ def main() -> None:
           f"total_return={stock_summary.get('total_return',float('nan'))*100:.1f}% "
           f"PF={stock_summary.get('profit_factor') or float('nan'):.2f}")
 
+    out = ROOT / "outputs" / "equity_options_real_data_retest"
+    out.mkdir(parents=True, exist_ok=True)
+
     results = {"stock_only": stock_summary}
     for moneyness in (1.0, 1.05):
         print(f"\n=== Pricing real calls, moneyness={moneyness} ===")
         priced = price_real_calls(trades, moneyness)
+        priced.to_parquet(out / f"raw_trades_moneyness{moneyness}.parquet")  # keep relative_strength_20 etc. for downstream slicing
         key = f"real_call_moneyness{moneyness}"
         results[key] = summarize(priced, key, CALL_SIZING, cfg)
         s = results[key]
@@ -110,8 +114,6 @@ def main() -> None:
               f"expectancy={s.get('expectancy_bps',float('nan')):.1f}bps PF={s.get('profit_factor') or float('nan'):.2f} "
               f"maxDD={s.get('max_drawdown',float('nan'))*100:.1f}% total_return={s.get('total_return',float('nan'))*100:.1f}%")
 
-    out = ROOT / "outputs" / "equity_options_real_data_retest"
-    out.mkdir(parents=True, exist_ok=True)
     (out / "summary.json").write_text(json.dumps(results, indent=2, default=str))
     print(f"\nWritten to {out / 'summary.json'}")
     print("\nOriginal synthetic study (full 2018+ sample, for reference, NOT the same window):")

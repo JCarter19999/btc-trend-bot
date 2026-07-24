@@ -66,6 +66,44 @@ have pointed at 0DTE; Sharpe points at shares or the spread depending on
 what's actually being optimized for -- and having both numbers, not just
 the flashy one, is what keeps this honest.
 
+## Addendum: futures (ES=F), added 2026-07-24 per Joey's "what other profit
+vehicles" question -- explicitly flagged futures as the likely-overlooked
+one. No new data purchase needed; ThetaData has no futures API at all
+(checked directly -- not in the client's method list), but yfinance
+already serves free continuous ES=F 60m bars.
+
+| Instrument | Win rate | Sharpe | Max drawdown | Total return |
+|---|---|---|---|---|
+| **ES=F futures (2hr proxy, unlevered)** | 64.8% | **4.55** | 2.4% | +16.9% |
+| SPY shares | 61.2% | 3.76 | 2.3% | +11.6% |
+
+At 1bp round-trip cost, on the RAW index-point return (no margin
+leverage applied at all -- see caveat below), futures already beats
+shares on every axis: higher win rate, higher Sharpe, comparable
+drawdown, higher total return. A real margin account would then multiply
+both the return AND the drawdown by whatever leverage ratio it actually
+uses -- not modeled here since this project has no verified broker margin
+schedule to apply, but the unlevered baseline being this strong is itself
+the finding worth having.
+
+**Two caveats that keep this honest, not a clean apples-to-apples row:**
+
+1. **Window is a proxy, not the exact signal target.** ES=F's free 60m
+   bars from yfinance align to the top of the hour (13:00, 14:00 UTC...),
+   not the :30 grid SPY/DAX get -- there is no 13:30-14:30 UTC bar to
+   look up at all. Fixed (after a first run produced only 1 usable trade)
+   by using 13:00-15:00 UTC instead -- a 2-hour window that fully
+   contains the true first hour, on the full ~2.4-year 60m history. 30m
+   bars would align correctly but yfinance caps that granularity at ~60
+   days lookback, too short to be useful here. So this measures "how did
+   ES do over a slightly wider window that contains the SPY signal
+   window," not literally the same 60-minute target -- a real, disclosed
+   difference, not a redefinition to make the number look better.
+2. **Coverage is shorter than the SPY backtest.** 105 of 116 top-quartile
+   signal days have ES=F 60m coverage (yfinance's 60m history only goes
+   back to 2024-02-29, vs SPY/DAX's full 2023-09 start) -- 11 of the
+   earliest signal days are dropped, not mispriced.
+
 ## A real bug caught mid-run, fixed before trusting these numbers
 
 The vertical spread pass crashed on its first run with an unhandled

@@ -58,6 +58,46 @@ by profit factor than synthetic suggested despite a higher win rate.
 direction of "still not a winner, but less badly wrong than the
 synthetic pricing implied." Not promotion-grade either way.
 
+## 1b) Long-call threshold analysis — does signal strength predict when calls beat shares?
+
+Hypothesis going in (Joey's framing): calls only earn their premium on the
+strongest signals — say the top 5-10% by conviction — and lose it on
+weaker ones. Tested directly: bucketed the same 715/694 real-priced
+call trades (moneyness 1.0/1.05) by `relative_strength_20` percentile
+within the signal pool, real calls vs. real shares in each bucket,
+independently compounded per bucket (small-N buckets, so treat total
+return as directional, profit factor as the more robust number).
+
+| Bucket (by relative_strength_20 percentile) | ATM call PF | ATM stock PF | 5%OTM call PF | 5%OTM stock PF |
+|---|---|---|---|---|
+| Bottom 50% (weakest) | **1.43** | 1.04 | **1.42** | 1.02 |
+| 50-75th pct | 0.83 | 1.07 | 0.63 | 0.78 |
+| 75-90th pct | 2.57 | **3.03** | 2.66 | **3.72** |
+| Top 10% (strongest) | 0.94 | 1.02 | 1.37 | **1.53** |
+
+**The hypothesis is rejected — and inverted.** Calls only beat shares on
+the *weakest* half of signals; shares dominate calls by a wide margin on
+the strongest ones (75th percentile and up), most dramatically in the
+75-90th bucket where stock's total return outran the call's by ~140
+percentage points on both moneyness levels. Mechanistic read: on the
+strongest-momentum signals the stock itself already captures a large,
+clean move — the option adds leverage to a bet that's already working,
+but also adds time decay and spread cost that eat into a move that
+didn't need the extra convexity. On the weakest signals, where the stock
+mostly just chops, the (still net-losing-but-less-so on a PF basis)
+convexity of the option loses less on the numerous small losers.
+
+**Caveat, stated plainly**: this doesn't mean "buy calls on weak
+signals" — every bucket besides bottom-50%-calls is still marginal or
+negative on an absolute basis, and small per-bucket sample sizes (70-179
+trades) mean this ranking could reshuffle with more data. The finding
+that survives scrutiny is negative, not positive: **there's no evidence
+that signal strength is the missing ingredient that makes calls worth
+their premium** — if anything, conviction is exactly when you should
+reach for the instrument that doesn't decay, which lines up with the
+instrument-selection framework's separate finding that shares win
+risk-adjusted (`EQUITY_INSTRUMENT_SELECTION_FRAMEWORK.md`).
+
 ## 2) Volatility breakout straddle — the decisive result
 
 This was flagged as the strongest synthetic finding of the whole project
@@ -190,18 +230,103 @@ the older weakest-momentum put thesis below though -- this short side
 comes from the independently-validated DAX-down-move signal, not a
 "short the weakest stock" selector.
 
-## What's still queued
+## 4) Tail hedge (45-DTE, 10%-OTM SPY puts) — inconclusive, and the reason
+why matters
 
-- European lead signal (SPY shares vs. 0DTE/1DTE/0.40-delta options, +
-  QQQ) with real quotes
-- Long-call threshold analysis: does calls-vs-shares performance depend
-  on signal strength percentile
-- Tail hedge true carrying cost with real SPY put quotes
-- P&L decomposition (delta/IV/theta/spread) for completed real trades --
-  core math built and validated (`implied_greeks.py`, solves implied vol
-  from real prices via Black-Scholes inversion rather than paying for
-  ThetaData's $80/mo Standard tier's direct Greeks feed)
+First pass: 61 re-entry cycles (2021-06+, 21-trading-day cadence), only
+19 priced (69% skipped as "no real data"), and the 19 that survived
+looked disastrous (win 5.3%, PF 0.05, -26.8% total return) with one
+outright suspicious number -- the sole 2022-bear-window trade showed an
+exact 0.0% return during an 18.2% SPY drawdown, which a 10%-OTM put
+should have profited handsomely from.
+
+Didn't take that at face value. Traced it to source with raw client
+calls (bypassing this module's swallowed exceptions) on a specific
+skipped cycle (signal 2021-07-30, target 370 strike, spot ~$412 -- ~10%
+OTM): `option_history_eod` for the intended entry date (2021-08-02)
+raised `NoDataFoundError`, but the *same contract* had good data by the
+exit date (2021-08-30). Pulling the raw quote history directly showed
+why -- the contract's earliest `created` timestamp was **2021-08-11**,
+nine days *after* the intended entry date. The strike hadn't been
+listed yet.
+
+Root cause, confirmed by inspecting the actual client method
+signatures: `option_list_strikes(symbol, expiration)` and
+`option_list_expirations(symbol)` **take no as-of-date parameter at
+all** -- they return the full lifetime set of strikes/expirations a
+series has ever had, not what existed on the signal date. Exchanges add
+new deep-OTM strikes incrementally as the underlying drifts, so a
+45-DTE, 10%-OTM put's target strike routinely doesn't exist yet on the
+date this strategy would need to buy it. This is a genuine data/API
+ceiling at this subscription tier, not a bug in `real_put_trade` --
+and it's specific to *this* structure: every other real-data retest in
+this project (ATM/5%-OTM 30-day calls, 0-1 DTE ATM SPY options) uses
+strikes that are listed well in advance and stay liquid the whole time,
+which is exactly why those hit ~100% coverage and this one hit 31%.
+
+**Verdict: inconclusive, not "hedge costs 27% a year."** The 19
+surviving trades are not a random subset of the 61 cycles -- they're
+systematically the cycles where a thin, newly-listed, deep-OTM contract
+happened to already have a market-maker quote on day one, which is not
+independent of market conditions (more likely exactly when volatility
+was already elevated and premium already expensive). Reporting the raw
+PF/win-rate number here would be reporting a selection artifact as if it
+were a cost measurement. This project's data tier cannot currently
+answer "what does this hedge really cost" for structures this far OTM
+and this far dated -- a real, disclosed dead end, not a swept-under-the-
+rug one.
+
+## 5) P&L decomposition — did trades lose because the signal was wrong,
+or because the option overpaid for volatility?
+
+Applied `implied_greeks.decompose_option_pnl` (implied-vol-from-real-
+price, then first-order delta/vega/theta attribution) to all 232
+completed real-quote European-signal trades (116 0DTE + 116 1DTE) --
+100% coverage, no skips (entry/exit SPY spot reconstructed from the
+already-cached 60m bars, no new API calls needed). Anchored at entry
+Greeks per standard convention; residual bucket absorbs gamma convexity
+and anything a first-order model can't explain, reported explicitly
+rather than hidden in another bucket.
+
+| | 0DTE | 1DTE |
+|---|---|---|
+| Mean total P&L/trade | +$0.194 | +$0.225 |
+| Underlying-move share of \|P&L\| | **90.1%** | **89.4%** |
+| IV-change share of \|P&L\| | 30.2% | 35.0% |
+| Theta share of \|P&L\| | 15.7% | 4.6% |
+| Residual/gamma share of \|P&L\| | 22.5% | 12.6% |
+| Mean entry IV -> exit IV | 31.1% -> 28.0% | 21.0% -> 19.9% |
+| **Losers: mean underlying-move P&L** | **-$0.402** | **-$0.426** |
+| Losers: mean theta P&L | -$0.147 | -$0.045 |
+
+**Direct answer: mostly the signal, not the premium.** On losing trades,
+the dominant term is the underlying moving the wrong way (-$0.40 to
+-$0.43 mean), roughly 3x the size of the theta drag (-$0.045 to -$0.15).
+IV genuinely fell from entry to exit on average in both structures (a
+real, quantifiable volatility-crush cost during the first trading hour,
+not assumed) but it's a secondary drag, not the main story. 0DTE pays
+meaningfully more theta than 1DTE (15.7% vs 4.6% of |P&L|) as expected
+-- a contract expiring same-day burns much faster per hour held than one
+with 24 more hours of extrinsic value -- but even for 0DTE, direction
+still dominates over decay. This is the honest version of "is this
+options edge real or is it just theta-negative noise that happens to
+work sometimes": the underlying-move share being ~90% in both cases
+means the European lead signal's directional accuracy is what's earning
+the money: the option is a leveraged vehicle for a real signal, not
+disguised vol-selling.
+
+## Status: full rigor pass complete
+
+Every item from the original post-ThetaData-purchase agenda is done:
+calls re-test, volatility breakout straddle re-test, European signal
+stock-vs-options re-test with full rigor suite, long-call threshold
+analysis, tail hedge attempt (root-caused as a genuine data-tier
+limitation, not silently accepted), and this P&L decomposition. Nothing
+left queued in this doc.
 
 Scripts: `experiments/run_equity_options_real_data_retest.py`,
 `experiments/run_equity_vol_breakout_real_data_retest.py`,
-`experiments/run_equity_options_real_vs_synthetic_comparison.py`
+`experiments/run_equity_options_real_vs_synthetic_comparison.py`,
+`experiments/run_call_threshold_analysis.py`,
+`experiments/run_tail_hedge_real_data_retest.py`,
+`experiments/run_pnl_decomposition.py`
