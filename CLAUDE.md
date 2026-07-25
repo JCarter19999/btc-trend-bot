@@ -352,6 +352,62 @@ lookup failure is logged as a data-quality flag and the leg is skipped,
 never faked — same discipline as every real-data retest on the research
 branch.
 
+## Paper deployment #5: NQ=F->QQQ futures-lead options (added 2026-07-25)
+
+`experiments/run_futures_lead_paper_step.py`. A second, independently-
+validated cross-market signal, deployed alongside (not instead of) the
+DAX->SPY signal above. Mechanism: futures-lead-cash — NQ=F's overnight
+session move predicts QQQ's cash-market open reaction, a different,
+well-documented effect from the DAX signal's cross-timezone-information
+story. Real-ThetaData-validated on the research branch
+(`EQUITY_FUTURES_LEAD_OPTIONS_BACKTEST.md`): 63.6%/63.6% win rate (0DTE/
+1DTE), PF 3.70/3.66, Sharpe 7.84/7.77, +469.6%/+269.7% total return, 107
+trades, 0 skipped — the strongest result of this project's entire
+cross-market research thread, decisively beating the DAX signal on every
+metric. QQQ options liquidity was verified comparable to SPY's before
+trusting this leg (9/9 real quotes succeeded across spread-out dates).
+
+**Scope decision, made explicitly by Joey**: deploy NQ->QQQ only, NOT
+also the companion ES=F->SPY signal that was validated alongside it
+(60.7%/61.7% win, PF 3.33/3.29, Sharpe 6.94/6.87, +365.7%/+215.8% —
+itself stronger than the DAX signal, but not deployed). Reason: ES=F and
+NQ=F are both US equity-index futures, highly correlated with each
+other — running both books would concentrate one directional bet, not
+diversify across two independent mechanisms, despite testing as
+statistically distinct signals on paper. NQ->QQQ was the stronger of the
+two, and pairing it with the already-live DAX signal gives two genuinely
+different real mechanisms (cross-timezone information + futures-lead-
+cash) rather than the same US-equity bet expressed twice.
+
+Signal construction: NQ=F's cumulative return from its own session's
+first 60-minute bar through the close of the last 60-minute bar strictly
+before 13:30 UTC (US open) sets direction. Gate is a **static**
+top-quartile-by-|move| threshold (>=0.0074225587272400695, q75 of the
+same 730-day window the backtest used, n=615) — static rather than the
+DAX script's expanding percentile, matching exactly what was backtested
+rather than introducing a new construction at deployment time. Options
+execution: real live ThetaData 0DTE/1DTE ATM QQQ quotes, entry always at
+the real ask (~9:30 ET), exit always at the real bid (~10:30 ET), $2,500
+base / $250 fixed premium per trade — same sizing convention as every
+other options book in this project. Two systemd timers, same two-
+invocation-per-day pattern as the DAX signal:
+`futures-lead-nq-qqq-entry.{service,timer}` (13:32 UTC) and
+`futures-lead-nq-qqq-exit.{service,timer}` (14:32 UTC), both enabled and
+active as of 2026-07-25 (first real fire will be Monday 2026-07-27, since
+2026-07-25/26 is a weekend and CME was closed).
+
+**Caveat, stated here and worth remembering**: shorter validated track
+record than the DAX signal (~2.4yr vs ~2.9yr, over a broadly strong
+period for US equities) — real, but a thinner evidence base than the
+signal it's deployed alongside.
+
+Check status:
+```bash
+python experiments/run_futures_lead_paper_step.py status
+python experiments/run_futures_lead_paper_step.py halt --reason "..."
+python experiments/run_futures_lead_paper_step.py resume
+```
+
 ## Live paper deployments: three, running in parallel (2026-07-23)
 
 Three independent live paper deployments run in parallel, each with its own
