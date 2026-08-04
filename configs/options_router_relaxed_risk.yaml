@@ -1,0 +1,63 @@
+# CPU-only options strategy router config -- RELAXED RISK, TESTING ONLY.
+#
+# The default configs/options_router.yaml uses the spec's own $5,000 /
+# 2%-per-trade sizing (section 16), which sizes every full-size SPX
+# structure to zero contracts (a real Phase-1 finding, not a bug -- see
+# OPTIONS_ROUTER_PHASE1.md). This variant relaxes max_risk_pct_per_trade so
+# the router/exit-policy/backtest pipeline can actually be observed taking
+# trades end to end. Do not treat these risk limits as live-suitable; they
+# exist only to unblock experimentation on a $5k-scale account against
+# full-size SPX contracts. For a real $5k account, either XSP (1/10 size)
+# or the spec's own smaller sizing is the honest answer, not this file.
+
+data:
+  entry_dir: data/opra_spx
+  exit_dir: data/opra_spx_exit
+  underlying: "^GSPC"
+  confirmation_symbols: ["SPY", "QQQ", "IWM", "^VIX"]
+  first_hour_bars_5m: 12
+  trailing_window_days: 5
+
+regimes:
+  bull_return_threshold: 0.0015
+  bear_return_threshold: -0.0015
+  moderate_return_threshold: 0.0005
+  clv_bull_threshold: 0.70
+  clv_bear_threshold: 0.30
+  efficiency_ratio_trend_threshold: 0.55
+  efficiency_ratio_chop_threshold: 0.35
+  trend_r2_threshold: 0.35
+  expansion_range_multiple: 1.5
+  expansion_vix_change_threshold: 0.03
+  vwap_crossing_chop_threshold: 3
+  min_confidence: 0.4
+
+strategy_map:
+  BULL_TREND: [call_debit_spread]
+  BEAR_TREND: [put_debit_spread]
+  VOLATILITY_EXPANSION: [long_straddle, long_strangle]
+  MODERATE_BULL: [put_credit_spread]
+  MODERATE_BEAR: [call_credit_spread]
+  CHOP_RANGE: []
+  NO_TRADE: []
+
+structures:
+  strike_distance_points: 7.5
+  credit_spread_width_points: 25.0
+
+risk:
+  account_value: 5000.0
+  max_risk_pct_per_trade: 0.30   # TESTING ONLY -- not a live-viable value, see header
+  max_daily_loss_pct: 0.35
+  max_weekly_loss_pct: 0.60
+  consecutive_loss_cooldown: 3
+  cooldown_trades: 5
+
+exit_policy:
+  mode: noon_if_profit_target_met
+  profit_target_pct: 0.20
+  hard_stop_pct: -0.50
+
+no_trade_filters:
+  max_entry_spread_pct_of_mid: 0.15
+  min_net_expectancy: 0.0

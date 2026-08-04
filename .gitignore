@@ -28,3 +28,11 @@ runtime/
 outputs/
 results/
 *.egg-info/
+data/databento/
+
+# OPRA option-chain snapshots (fetched via experiments/fetch_spx_0dte_options.py;
+# regenerable from Databento, results captured in OPTIONS_ROUTER_PHASE1.md)
+data/opra_spx/
+data/opra_spx_exit/
+data/opra_xsp/
+data/opra_xsp_exit/
